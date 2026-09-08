@@ -29,4 +29,6 @@ jobs:
             build/budget.json
             build/boundary-summary.json
             build/conservative-runoff.json
+            build/maritime-envelope.json
+            build/maritime-object-admission.json
             build/genesis-core.jar

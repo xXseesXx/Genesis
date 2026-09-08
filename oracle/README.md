@@ -1,5 +1,9 @@
 # Reference oracles
 
+## Maritime-domain research experiment
+
+`src/genesis/oracle/MaritimeEnvelope.java` tests bounded jittered-Voronoi ownership and an exact integer ocean-clearance restriction. It is not a production coast or basin generator. [Candidate comparison and evidence](../research/root-terminal-design.md) document the 25-site support argument, finite domain box, continuous-ocean reasoning, remaining discrete terminal obligations, and the visible land loss caused by late clipping. The clipped candidate mask has not been adopted.
+
 ## Conservative-source research experiment
 
 `src/genesis/oracle/ConservativeRunoff.java` conditions fine local sources on supplied terminal net-runoff budgets using actual upstream-subtree ownership. It preprocesses a complete finite graph, reuses the core hash primitive, and remains outside the Java8 production JAR. Independent source walks, allocation references and R1a boundary composition check exact results. [Results and limitations](../research/conservative-runoff-experiment.md) include unbalanced query cost and non-monotonic integer apportionment; this is not an infinite-world rainfall generator.
