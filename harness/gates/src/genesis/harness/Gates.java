@@ -52,6 +52,7 @@ public final class Gates {
         ConservativeRunoffGates.run();
         MaritimeEnvelopeGates.run();
         AuthoredLandmassGates.run();
+        AuthoredMosaicGates.run();
         ChannelGates.run();
         RunoffGates.run();
         GeologyGates.run();

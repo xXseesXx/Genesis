@@ -32,4 +32,5 @@ jobs:
             build/maritime-envelope.json
             build/maritime-object-admission.json
             build/authored-landmass.json
+            build/authored-mosaic.json
             build/genesis-core.jar

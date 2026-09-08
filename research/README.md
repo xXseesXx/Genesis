@@ -7,6 +7,7 @@ Research records distinguish established results, mathematical reasoning, design
 - [Conservative runoff hierarchy](conservative-runoff-experiment.md): catchment-aligned source ownership, exact weighted splits, independent upstream integration, and explicit query-cost/quantization limitations.
 - [Root and terminal design comparison](root-terminal-design.md): bounded-solve versus constructive-watershed contracts, an executable maritime-envelope separation experiment, and the measured geographic cost of clipping existing continents.
 - [Authored connected land](authored-landmass-experiment.md): constructive growth within a canonical safe domain, exact connected coverage and reserve-connected water classification; a positive finite fixture, not adopted world geography.
+- [Adjoining-domain mosaics](authored-mosaic-experiment.md): twelve multi-domain/scale audits expose the cellular-ocean restriction; production layout rejected, with explicit active-domain drainage contracts for the next experiment.
 - [Active roadmap](../docs/Active-Roadmap.md): implementation order and acceptance criteria informed by this research.
 
 The original [development proposal](../Dev-Roadmap.md) and [concept notes](../warning_half_baked_concepts.md) remain preserved. Research changes the active execution plan, not the historical record.

@@ -139,3 +139,7 @@ R2 remains open until these choices and contracts are sufficiently complete. R2a
 ### Subsequent R2b positive fixture
 
 [Authored connected land](authored-landmass-experiment.md) now constructs a connected growth prefix inside the safe domain instead of clipping/rejecting old objects. Ten tested configurations preserve exact connected coverage and independently verified reserve-connected water classification. Main seed42 fixture grows from 1686 to 2741 connected samples at 40/65 percent. This is a separate canonical coarse realization, not preservation of the old coast. Its one-landmass-per-domain assumption, single-scale bias, lack of physical elevation/drainage and full-root numeric-halo limits remain explicit. R2 is still open; the fixture can support bounded routing research without silently promoting its geography.
+
+### Subsequent adjoining-domain decision
+
+[Twelve mosaic/scale audits](authored-mosaic-experiment.md) now show the full cellular-ocean signature at 65/90-percent safe-area coverage. The exact single-scale island layout is rejected as production geography, not merely awaiting a noise adjustment. Keep it as a provisional complete finite routing fixture. Next implement explicit active-cell routing/terminal/depression contracts; excluded neighbor interiors must be barriers, not high traversable terrain. Continental geography and inland hydrological divides remain separate open design work.
