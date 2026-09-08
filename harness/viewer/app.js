@@ -107,6 +107,7 @@ for(const side of ['A','B']) {
 function download(blob,name) {const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 $('export').onclick=()=>{if(state.images.A){download(state.images.A,'genesis-A.png');download(new Blob([JSON.stringify({version:meta.version,query:state.requests.A},null,2)],{type:'application/json'}),'genesis-A.json');if($('compare').checked&&state.images.B){download(state.images.B,'genesis-B.png');download(new Blob([JSON.stringify({version:meta.version,query:state.requests.B},null,2)],{type:'application/json'}),'genesis-B.json');}}};
 $('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);
+$('continentsOverview').onclick=()=>{if(!meta)return;state.step=Math.max(1,Math.ceil(state.params.continentScale/64));state.x=-256*state.step;state.z=-256*state.step;for(const layer of state.layers){layer.enabled=layer.id==='continentSeaMask';layer.opacity=1;}syncLayers();schedule();};
 $('hydrologyLink').onclick=event=>{try{$('hydrologyLink').href='/hydrology.html?'+new URLSearchParams({...config('A'),x:state.x,z:state.z,step:Math.min(1048576,state.step*4)});}catch(e){event.preventDefault();error(e.message);}};
 $('refinementLink').onclick=event=>{try{const a=config('A');$('refinementLink').href='/refinement.html?'+new URLSearchParams({seed:a.seed,x:state.x,z:state.z,coarseSpacing:a.coarseSpacing});}catch(e){event.preventDefault();error(e.message);}};
 $('home').onclick=()=>{state.x=-256*state.step;state.z=-256*state.step;schedule();};
@@ -128,7 +129,7 @@ $('resetParams').onclick=()=>{for(const spec of meta.params)state.params[spec.id
 async function init(){
   const response=await fetch('/api/meta');if(!response.ok)throw new Error('Could not load core metadata.');meta=await response.json();$('version').textContent=meta.version;
   for(const spec of meta.params)state.params[spec.id]=spec.default;makeParams();
-  const macro=['baseElevation','coarseChannelDistance','drainagePortDistance','seaMask','continentality','coarseSeaDistance','coarseDrainageRank','coarseFlowDirection'];
+  const macro=['continentScaffold','continentSeaMask','baseElevation','coarseChannelDistance','drainagePortDistance','seaMask','continentality','coarseSeaDistance','coarseDrainageRank','coarseFlowDirection'];
   const fields=[...macro.map(id=>meta.fields.find(f=>f.id===id)).filter(Boolean),...meta.fields.filter(f=>!macro.includes(f.id)&&!['noise','ridges','boundaryType'].includes(f.id)),...meta.fields.filter(f=>['noise','ridges'].includes(f.id)),...meta.fields.filter(f=>f.id==='boundaryType')];
   for(const field of fields){
     const layer={id:field.id,enabled:field.id==='baseElevation',opacity:1};state.layers.push(layer);
@@ -146,6 +147,7 @@ function syncLayers(){for(const layer of state.layers){layer.elements.check.chec
 function showLegend(){
   const descriptions=state.layers.filter(l=>l.enabled).map(layer=>{
     const f=meta.fields.find(f=>f.id===layer.id);
+    if(f.id==='continentScaffold'||f.id==='continentSeaMask')return `${f.label}: connected macro lobes; blue water / green land. Controls: continentScale, Coverage, LobeRadius, LobeVariation, ArmStep. Try zooming out twice. Candidate only: existing elevation and rivers use the old coast.`;
     if(f.id==='coarseChannelDistance')return `${f.label}: cyan world-coordinate guides; unresolved coarse routes stay absent. No flux, carving, or globally proven ocean mouths yet.`;
     if(f.id==='drainagePortDistance')return `${f.label}: gold shared-edge crossings; identical from either cell and independent of the viewport.`;
     const details=f.type==='Long'?'colors distinguish exact identities':f.id==='baseElevation'?'blue: below sea · green to pale: higher land · display hillshade':f.id==='seaMask'?'blue: sea-level terminal · green: land (global connectivity pending)':f.id==='coarseFlowDirection'?'pink: unresolved · blue: sea · gold: N · green: E · pale blue: S · coral: W':f.id.startsWith('coarse')?`${f.units} · pink: unresolved · values refer to the coarse anchor`:f.id==='boundaryType'?'blue: divergent · gold: transform · orange: convergent':f.id==='crustType'?'blue: oceanic · green: continental':f.id==='uplift'?'blue: extension · dark: neutral · orange: compression':`${f.min} → ${f.max} ${f.units} (display range)`;

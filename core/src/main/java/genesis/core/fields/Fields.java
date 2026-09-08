@@ -2,6 +2,8 @@ package genesis.core.fields;
 
 public final class Fields {
     private Fields() {}
+    public static final FieldId<Integer> CONTINENT_SCAFFOLD = new FieldId<Integer>("continentScaffold", "Continental scaffold (candidate)", "signed macro-object score; not elevation", Integer.class, -1000, 1000);
+    public static final FieldId<Integer> CONTINENT_SEA_MASK = new FieldId<Integer>("continentSeaMask", "Continental land / sea (candidate)", "0 land / 1 sea; independent of current drainage", Integer.class, 0, 1);
     public static final FieldId<Double> NOISE = new FieldId<Double>("noise", "Reference fBm", "normalized", Double.class, -1, 1);
     public static final FieldId<Double> RIDGES = new FieldId<Double>("ridges", "Noise ridges (diagnostic)", "normalized", Double.class, 0, 1);
     public static final FieldId<Long> PLATE_ID = new FieldId<Long>("plateId", "Plates", "lattice key", Long.class, 0, 1);

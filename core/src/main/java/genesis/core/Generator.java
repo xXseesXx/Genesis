@@ -6,11 +6,12 @@ import genesis.core.fields.Noise;
 import genesis.core.tectonics.Tectonics;
 import genesis.core.elevation.CoastTopology;
 import genesis.core.elevation.MacroElevation;
+import genesis.core.elevation.ContinentalScaffold;
 import genesis.core.hydro.CoarseChannels;
 
 /** Composition root: only here may concrete field implementations be wired together. */
 public strictfp final class Generator {
-    public static final String VERSION = "genesis-m3a-v2";
+    public static final String VERSION = "genesis-m3a-v3";
     public final long seed;
     public final Params params;
     public final FieldRegistry fields;
@@ -44,7 +45,10 @@ public strictfp final class Generator {
             .add(Fields.FLOW_DIRECTION, (x, z) -> coast.at(x, z).direction)
             .build();
         final CoarseChannels channels = new CoarseChannels(seed, params, coastFields);
+        final ContinentalScaffold continents = new ContinentalScaffold(seed, params);
         this.fields = new FieldRegistry.Builder().include(coastFields)
+            .add(Fields.CONTINENT_SCAFFOLD, continents::score)
+            .add(Fields.CONTINENT_SEA_MASK, (x, z) -> continents.score(x, z) <= 0 ? 1 : 0)
             .add(Fields.CHANNEL_DISTANCE, channels::channelDistance)
             .add(Fields.PORT_DISTANCE, channels::portDistance)
             .build();

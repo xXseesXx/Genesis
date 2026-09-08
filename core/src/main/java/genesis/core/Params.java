@@ -36,6 +36,10 @@ public final class Params {
         add(specs, new Spec("upliftStrength", 1, 0, 2, 0.05, false, "Compression signal amplitude; not elevation"));
         add(specs, new Spec("coarseSpacing", 4096, 1024, 16384, 1024, true, "Canonical coastline anchor spacing in blocks"));
         add(specs, new Spec("continentScale", 65536, 16384, 1048576, 16384, true, "Wavelength of integer continental variation"));
+        add(specs, new Spec("continentCoverage", 45, 0, 100, 1, true, "Candidate scaffold: probability of a landmass object; not land fraction"));
+        add(specs, new Spec("continentLobeRadius", 375, 300, 400, 1, true, "Candidate minimum lobe radius in permille of continentScale"));
+        add(specs, new Spec("continentLobeVariation", 250, 0, 250, 1, true, "Candidate added lobe radius range in permille of continentScale"));
+        add(specs, new Spec("continentArmStep", 437, 250, 500, 1, true, "Candidate lobe center step in permille; bounded to preserve overlap"));
         add(specs, new Spec("crustInfluence", 700, 0, 1000, 25, true, "Crust contribution to continental score in permille"));
         add(specs, new Spec("crustBlendRadius", 1500, 1100, 2500, 50, true, "Integer crust blending radius in permille of plate spacing"));
         add(specs, new Spec("seaThreshold", 500, 200, 800, 10, true, "Fixed sea threshold in permille; never a viewport quantile"));

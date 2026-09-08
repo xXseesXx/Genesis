@@ -24,7 +24,7 @@ public final class Renderer {
         BufferedImage image = null;
         double min = Double.POSITIVE_INFINITY, max = Double.NEGATIVE_INFINITY, sum = 0;
         int land = 0;
-        boolean landMetric = layers[0].field == Fields.BASE_ELEVATION || layers[0].field == Fields.CONTINENTALITY || layers[0].field == Fields.SEA_MASK;
+        boolean landMetric = layers[0].field == Fields.BASE_ELEVATION || layers[0].field == Fields.CONTINENTALITY || layers[0].field == Fields.SEA_MASK || layers[0].field == Fields.CONTINENT_SCAFFOLD || layers[0].field == Fields.CONTINENT_SEA_MASK;
         for (int layerIndex = 0; layerIndex < layers.length; layerIndex++) {
             Layer layer = layers[layerIndex];
             Object[] tile = generator.fields.values(layer.field, x, z, step, w, h);
@@ -33,7 +33,7 @@ public final class Renderer {
                 Number raw = (Number) tile[row * w + col];
                 double value = raw.doubleValue();
                 if (layerIndex == 0 && layer.field.type != Long.class) { min = Math.min(min, value); max = Math.max(max, value); sum += value; }
-                if (layerIndex == 0 && landMetric && (layer.field == Fields.SEA_MASK ? value == 0 : value > 0)) land++;
+                if (layerIndex == 0 && landMetric && (layer.field == Fields.SEA_MASK || layer.field == Fields.CONTINENT_SEA_MASK ? value == 0 : value > 0)) land++;
                 int color;
                 if (layer.field.type == Long.class) {
                     long identity = raw.longValue();
@@ -78,7 +78,8 @@ public final class Renderer {
         return (r << 16) | (g << 8) | blue;
     }
     public static int color(FieldId<?> field, double value) {
-        if (field == Fields.SEA_MASK) return value == 1 ? 0x245b78 : 0xa8b879;
+        if (field == Fields.SEA_MASK || field == Fields.CONTINENT_SEA_MASK) return value == 1 ? 0x245b78 : 0xa8b879;
+        if (field == Fields.CONTINENT_SCAFFOLD) return value <= 0 ? blend(0x0a263e, 0x5299a7, 1 + value / 1000) : blend(0xa8b879, 0x526d45, value / 1000);
         if (field == Fields.SEA_DISTANCE || field == Fields.DRAINAGE_RANK || field == Fields.FLOW_DIRECTION) {
             if (value < 0) return 0xc261a3;
             if (field == Fields.FLOW_DIRECTION) return new int[] {0x245b78, 0xdbba79, 0xb6d898, 0x8cacde, 0xe28b77}[(int) value];

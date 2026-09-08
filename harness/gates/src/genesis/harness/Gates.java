@@ -39,12 +39,13 @@ public final class Gates {
     private Gates() {}
 
     public static void main(String[] args) throws Exception {
-        if (args.length > 0 && args[0].equals("gallery")) { golden(true); RefinementGates.golden(true); RefinementDemo.writeDiagnostics(); return; }
+        if (args.length > 0 && args[0].equals("gallery")) { golden(true); RefinementGates.golden(true); RefinementDemo.writeDiagnostics(); ContinentalGates.main(args); return; }
         long start = System.nanoTime();
         contracts();
         avalanche();
         TectonicGates.run();
         CoastGates.run();
+        ContinentalGates.run();
         HydrologyGates.run();
         ChannelGates.run();
         RefinementGates.run();
@@ -181,7 +182,8 @@ public final class Gates {
         check(("genesis-" + milestone + "-v1").equals(baseline.getProperty("version")), "Golden version mismatch");
         Map<String, Double> parameters = new LinkedHashMap<>();
         for (String id : Params.SPECS.keySet()) {
-            if (List.of("m0", "m1").contains(milestone) && !baseline.containsKey("param." + id)) continue;
+            // Milestone snapshots freeze the parameters that existed when those fields were added.
+            if (!baseline.containsKey("param." + id)) continue;
             parameters.put(id, Double.parseDouble(baseline.getProperty("param." + id)));
             check(parameters.get(id).equals(Params.defaults().get(id)), "Default changed: explicitly update golden params " + id);
         }
@@ -236,7 +238,7 @@ public final class Gates {
                 }
                 if (path.getFileName().toString().equals("PlateTopology.java"))
                     check(!Pattern.compile("\\b(?:double|float)\\b|Math\\.(?:sqrt|pow)|signedUnit").matcher(code).find(), "LINT floating topology: " + path);
-                if (path.getFileName().toString().equals("CoastTopology.java"))
+                if (List.of("CoastTopology.java", "ContinentalScaffold.java").contains(path.getFileName().toString()))
                     check(!Pattern.compile("\\b(?:double|float)\\b|signedUnit|Fields\\.UPLIFT").matcher(code).find(), "LINT floating coast decisions: " + path);
                 // Generator expressions may use only structural 0/1; Noise has a documented math/domain allowlist.
                 if (path.getFileName().toString().equals("Noise.java") || !owner.isEmpty()) {
@@ -249,6 +251,7 @@ public final class Gates {
                             || (file.equals("PlateTopology.java") && List.of("2", "3", "4", "7", "16", "32", "64", "100", "256", "1000", "4096", "1L", "0xffffffffL", "0x504c415445L").contains(n))
                             || (file.equals("Tectonics.java") && n.equals("6"))
                             || (file.equals("CoastTopology.java") && List.of("2", "3", "4", "16", "1000", "8192", "4096", "0x434f415354L").contains(n))
+                            || (file.equals("ContinentalScaffold.java") && List.of("2", "3", "4", "4L", "5", "9", "16", "64", "100", "724", "1000", "1024", "0x434f4e54494eL").contains(n))
                             || (file.equals("MacroElevation.java") && n.equals("1000.0"))
                             || (file.equals("BoundaryPorts.java") && List.of("2", "3", "4", "20", "0x504f525453L").contains(n))
                             || (file.equals("CoarseChannels.java") && List.of("2", "3", "4", "16", "512").contains(n))
@@ -278,6 +281,10 @@ public final class Gates {
             BufferedImage expected = Renderer.render(new Generator(42, Params.defaults()), new Renderer.Layer[] {
                 new Renderer.Layer(Fields.NOISE, 1), new Renderer.Layer(Fields.RIDGES, .25)}, -32, -32, 8, 32, 32).image();
             check(pixels(actual).equals(pixels(expected)), "HTTP composition differs from core render");
+            var continent = client.send(HttpRequest.newBuilder(URI.create(base + "/api/render?seed=42&x=-65536&z=-65536&width=32&height=32&step=4096&layers=continentSeaMask:1&continentCoverage=0")).build(), HttpResponse.BodyHandlers.ofByteArray());
+            check(continent.statusCode() == 200, "HTTP candidate field unavailable");
+            var candidateImage = ImageIO.read(new ByteArrayInputStream(continent.body()));
+            for (int z = 0; z < 32; z++) for (int x = 0; x < 32; x++) check((candidateImage.getRGB(x,z) & 0xffffff) == 0x245b78, "HTTP candidate parameters ignored");
             var refined = client.send(HttpRequest.newBuilder(URI.create(base + "/api/refinement?seed=42")).build(), HttpResponse.BodyHandlers.ofString());
             check(refined.statusCode() == 200 && refined.body().equals(RefinementDemo.json(RefinementDemo.create(Map.of("seed","42")))), "HTTP refinement contract mismatch");
             var refinedPng = client.send(HttpRequest.newBuilder(URI.create(base + "/api/refinement.png?seed=42&layer=flux")).build(), HttpResponse.BodyHandlers.ofByteArray());
@@ -338,11 +345,16 @@ public final class Gates {
             new Renderer.Layer[] {new Renderer.Layer(Fields.BASE_ELEVATION, 1), new Renderer.Layer(Fields.CHANNEL_DISTANCE, 1), new Renderer.Layer(Fields.PORT_DISTANCE, 1)},
             -65536, -65536, 256, 512, 512).nanos();
         double guideMedian = percentile(guideFrames, .5);
+        long[] continentFrames = new long[5];
+        for (int i = 0; i < continentFrames.length; i++) continentFrames[i] = Renderer.render(g,
+            new Renderer.Layer[] {new Renderer.Layer(Fields.CONTINENT_SCAFFOLD, 1)}, -262144, -262144, 1024, 512, 512).nanos();
+        double continentMedian = percentile(continentFrames, .5);
         String report = String.format(java.util.Locale.ROOT,
-            "{\"version\":\"%s\",\"java\":\"%s\",\"os\":\"%s\",\"processors\":%d,\"chunkColdP95Ms\":%.4f,\"chunkWarmP95Ms\":%.4f,\"render512MedianMs\":%.2f,\"guideRender512MedianMs\":%.2f}%n",
-            Generator.VERSION, System.getProperty("java.version"), System.getProperty("os.name"), Runtime.getRuntime().availableProcessors(), cold95, warm95, frameMedian, guideMedian);
+            "{\"version\":\"%s\",\"java\":\"%s\",\"os\":\"%s\",\"processors\":%d,\"chunkColdP95Ms\":%.4f,\"chunkWarmP95Ms\":%.4f,\"render512MedianMs\":%.2f,\"guideRender512MedianMs\":%.2f,\"continentRender512MedianMs\":%.2f}%n",
+            Generator.VERSION, System.getProperty("java.version"), System.getProperty("os.name"), Runtime.getRuntime().availableProcessors(), cold95, warm95, frameMedian, guideMedian, continentMedian);
         Files.writeString(Path.of("build/budget.json"), report);
-        check(cold95 <= 25 && warm95 <= 1 && frameMedian < 1000 && guideMedian < 1000, "BUD over current thresholds: " + report);
-        System.out.printf("PASS BUD: all 20 fields cold p95 %.3f ms/chunk, cached p95 %.3f ms/chunk; 512-square elevation %.1f ms, guides+ports %.1f ms median%n", cold95, warm95, frameMedian, guideMedian);
+        check(cold95 <= 25 && warm95 <= 1 && frameMedian < 1000 && guideMedian < 1000 && continentMedian < 1000, "BUD over current thresholds: " + report);
+        System.out.printf("PASS BUD continental scaffold: 512-square %.1f ms median%n", continentMedian);
+        System.out.printf("PASS BUD: all %d fields cold p95 %.3f ms/chunk, cached p95 %.3f ms/chunk; 512-square elevation %.1f ms, guides+ports %.1f ms median%n", g.fields.ids().size(), cold95, warm95, frameMedian, guideMedian);
     }
 }
