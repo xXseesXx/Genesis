@@ -1,5 +1,7 @@
 # Roadmap review and proposed refinements
 
+Update 2026-09-08: [Active-Roadmap.md](Active-Roadmap.md) now defines the execution sequence following the [algorithmic research](../research/2026-09-08-coherent-world-generation.md). The review below is retained for rationale; its earlier next-work sequence is superseded.
+
 The original `Dev-Roadmap.md` is preserved. These are design proposals and explicit M0 implementation choices, not claims that the later milestones are solved.
 
 ## Keep the core idea

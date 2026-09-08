@@ -1,5 +1,9 @@
 # Reference oracles
 
+## Boundary-summary research experiment
+
+`src/genesis/oracle/BoundaryFlowSummary.java` implements exact finite DAG reduction to boundary transfers, with nested coarsening and explicit terminals. It is Java21 test/research code, excluded from the production core JAR. The complete finite source graph is an input; no world-root or constant-size summary guarantee is claimed. [Experiment contracts and results](../research/boundary-flow-experiment.md) describe the independent reference tests and code-generated diagnostics.
+
 ## Implemented finite reference
 
 `src/genesis/oracle/FiniteHydrology.java` is a new Java 21, integer-only, finite D8 priority-flood reference. It is independent of `core/`, used only by tests and the local analysis harness, and excluded from the production core JAR. Run `../genesis.ps1 test` from this directory, or open the viewer's `/hydrology.html` page after starting the server. See [the boundary, numeric, tie and validation contracts](../docs/Finite-Hydrology.md).

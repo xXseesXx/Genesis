@@ -27,4 +27,5 @@ jobs:
           path: |
             build/gallery/
             build/budget.json
+            build/boundary-summary.json
             build/genesis-core.jar

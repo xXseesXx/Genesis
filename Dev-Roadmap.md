@@ -1,5 +1,7 @@
 # Genesis — Development Roadmap & Testing Harness Specification
 
+> Historical v1 proposal, preserved below. The authoritative implementation order and corrected acceptance contracts are now in [docs/Active-Roadmap.md](docs/Active-Roadmap.md), informed by [the 2026-09-08 research](research/2026-09-08-coherent-world-generation.md). In particular, the original potential, Hack-complexity, lake-decoration and oracle assumptions below are not current guarantees.
+
 Status: v1.0 · Scope: deterministic virtual-planet generator, developed fully outside Minecraft until M9.
 
 ---

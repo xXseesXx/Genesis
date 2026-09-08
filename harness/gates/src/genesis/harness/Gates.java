@@ -48,6 +48,7 @@ public final class Gates {
         ContinentalGates.run();
         ContinentalWorldGates.run();
         HydrologyGates.run();
+        BoundarySummaryGates.run();
         ChannelGates.run();
         RunoffGates.run();
         GeologyGates.run();

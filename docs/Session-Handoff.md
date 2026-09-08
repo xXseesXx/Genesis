@@ -2,9 +2,17 @@
 
 Checkpoint: 2026-09-08, `genesis-m5a-v1`. Read this first after a context reset; inspect `git status` and the current commit/CI before making changes. This note preserves project context, not a claim that the conversation runtime was compacted.
 
+## Latest direction and research checkpoint
+
+The user requested an algorithmic research pause, then explicitly asked to save it in `./research` and continue with an updated roadmap. Research is in `research/2026-09-08-coherent-world-generation.md`; **`docs/Active-Roadmap.md` is now authoritative**. The original roadmap is preserved with a supersession notice. Earlier geology-first next-work preferences below are historical.
+
+R0 is complete. R1a adds Java21-only `oracle/BoundaryFlowSummary` and `BoundarySummaryGates`: lossless single-receiver finite DAG elimination into exact boundary transfers, nested coarsening, stable original edge-source identities, multiple exits and region re-entry. Complete upstream graph is an input, not discovered cheaply. 400 seeded independent source-walk comparisons pass; spatial fixture reduces 384 nodes to 105 with 1,608 exact runoff units. Worst-case alternating-owner graph retains 256/256. Reports: `build/boundary-summary.json`, inspected `build/gallery/boundary-summary.png`. No new dependencies, production fields, Params, version change, viewer changes or historical golden updates.
+
+Next: R1b conservative runoff hierarchy aligned with catchment ownership, then R2 explicit root/terminal candidate contracts and R3 end-to-end watershed comparison. Do not confuse exact finite summary composition with completed infinite-world roots, arbitrary watershed integration or physical terrain realization. The preferred bounded root-region architecture is still a proposal, not a selected world partition. Full R4-R8 geology/climate/surface acceptance precedes Minecraft R9.
+
 ## User requirements
 
-- Minecraft 1.7.10 / GTNH eventually, raw generation first. Follow the original `Dev-Roadmap.md`; proposals are in `docs/Roadmap-Review.md`. Do not overwrite either original roadmap/concept notes or this repository's Git metadata.
+- Minecraft 1.7.10 / GTNH eventually, raw generation first. Follow `docs/Active-Roadmap.md`; preserve the historical `Dev-Roadmap.md` and concept notes. Do not overwrite this repository's Git metadata.
 - Infinite, non-repeating plane; deterministic regardless of generation order, crop or zoom. Numeric support ±2^40 is not a planet edge or terminal.
 - Continental landmasses, not noise as the sole organizing structure. Placeholder relief is acceptable while larger systems are developed.
 - All field controls in the viewer's **top bar**. Dedicated continental viewer requested: actual terrain plus all relevant coast/drainage fields wired to continents.
