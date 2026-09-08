@@ -51,6 +51,13 @@ public final class Renderer {
                     color = blend(0x101b22, color, Math.max(.35, Math.min(1, .45 + .65 * light)));
                 }
                 double opacity = layer.opacity;
+                if (layer.field == Fields.CHANNEL_FLOW) {
+                    double distance = generator.fields.get(Fields.CHANNEL_DISTANCE, x + col * step, z + row * step);
+                    // Flow-weighted DISPLAY stroke; neither physical width nor a carved channel.
+                    double stroke = Math.min(generator.params.integer("coarseSpacing") / 16.0, step * (0.75 + Math.sqrt(Math.max(0, value)) / 2));
+                    opacity *= value <= 0 ? 0 : Math.max(0, 1 - distance / stroke);
+                    if (layerIndex == 0) image.setRGB(col, row, 0x102029);
+                }
                 if (layer.field == Fields.CHANNEL_DISTANCE || layer.field == Fields.PORT_DISTANCE) {
                     // World-coordinate distance is pure; stroke thickness is display-only.
                     // Keep thickness below the distance cap so absent guides never fill the map.
@@ -78,6 +85,12 @@ public final class Renderer {
         return (r << 16) | (g << 8) | blue;
     }
     public static int color(FieldId<?> field, double value) {
+        if (field == Fields.RUNOFF_STATUS) return value < 0 ? 0xc261a3 : value == 0 ? 0x448f84 : 0xe6af62;
+        if (field == Fields.COARSE_RUNOFF || field == Fields.CHANNEL_FLOW) {
+            if (value < 0) return 0xc261a3;
+            return blend(field == Fields.CHANNEL_FLOW ? 0x379cac : 0x102839, 0xc5f5f1,
+                Math.min(1, Math.log1p(Math.max(0, value)) / Math.log1p(field.displayMax)));
+        }
         if (field == Fields.SEA_MASK || field == Fields.CONTINENT_SEA_MASK) return value == 1 ? 0x245b78 : 0xa8b879;
         if (field == Fields.CONTINENT_SCAFFOLD) return value <= 0 ? blend(0x0a263e, 0x5299a7, 1 + value / 1000) : blend(0xa8b879, 0x526d45, value / 1000);
         if (field == Fields.TERRAIN_DETAIL || field == Fields.TECTONIC_RELIEF)

@@ -16,7 +16,7 @@ At level L, spacing is `coarseSpacing * 2^L`. Levels 0..20 are supported for thi
 
 An inherited coarse port lies in exactly one finer face. `childFace(port, finerLevel)` locates that face without changing the port's original identity or coordinates. Callers must carry the original commitment: **hashing the child face independently creates another port and is not refinement**. This supplies a stable crossing primitive, not the entire child-routing algorithm or permission to open other parent-boundary crossings.
 
-`CoarseChannels` consumes only registered `coarseFlowDirection` values. Each cell connects its center hub to its outgoing crossing and any incoming crossings. Both sides of a crossed edge use the same port. Straight segments stay inside their owning cell; incoming and outgoing branches join at the same hub. This makes a connected geometric realization of the existing resolved coarse graph.
+`CoarseChannels` derives geometry from registered `coarseFlowDirection` values. Each cell connects its center hub to its outgoing crossing and any incoming crossings. Both sides of a crossed edge use the same port. Straight segments stay inside their owning cell; incoming and outgoing branches join at the same hub. This makes a connected geometric realization of the existing resolved coarse graph. Since v5, its optional flow query also consumes registered `coarseRunoff`; see [world runoff](World-Runoff.md) for exact resolved-graph accounting and explicit unknown-frontier status.
 
 Two new fields appear in the main viewer's top bar:
 
@@ -35,7 +35,7 @@ The initial version was `genesis-m3a-v1`; `genesis-m3a-v2` fixes child-corner ex
 
 - This consumes M2a's bounded nearest-sea-anchor graph, which can return unresolved and does not distinguish globally connected ocean from enclosed sea-level depressions. Missing routes stay absent; the numeric support edge does not invent ports to the outside.
 - The hub of a coarse sea-anchor cell need not itself lie below sea level. Guide endings are not exact shoreline mouths. Guide segments are not conditioned terrain, and may cross uphill relief.
-- These are **guides, not rivers**: no contributing area, rainfall, channel width, erosion, lake level, channel-bed profile, or complete coarse-to-fine cascade is claimed. Their angular or parallel appearance reflects the current coarse graph and straight-segment realization.
+- These are **guides, not carved rivers**: v5 supplies uniform unit-rain accumulation on resolved anchors, not physical contributing area, climate rainfall, channel width, erosion, lake level, channel-bed profiles, or a complete coarse-to-fine cascade. Their angular or parallel appearance reflects the current coarse graph and straight-segment realization.
 - Stable inherited port positions are only part of refinement. Child routing still needs exact boundary-transfer ownership, flux disaggregation, terminal handling, and containment between inherited ports.
 - No bounded local algorithm can find an ocean in an intentionally all-land input. A complete model must construct reachable terminal commitments, explicitly support endorheic basins, or constrain such configurations. It must not disguise an unresolved case as a canvas-edge outlet.
 

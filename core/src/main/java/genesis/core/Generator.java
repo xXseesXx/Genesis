@@ -8,10 +8,11 @@ import genesis.core.elevation.CoastTopology;
 import genesis.core.elevation.MacroElevation;
 import genesis.core.elevation.ContinentalScaffold;
 import genesis.core.hydro.CoarseChannels;
+import genesis.core.hydro.CoarseRunoff;
 
 /** Composition root: only here may concrete field implementations be wired together. */
 public strictfp final class Generator {
-    public static final String VERSION = "genesis-m3a-v4";
+    public static final String VERSION = "genesis-m3a-v5";
     public enum Model {
         LEGACY("legacy"), CONTINENTAL("continental");
         public final String id;
@@ -61,11 +62,16 @@ public strictfp final class Generator {
             .add(Fields.DRAINAGE_RANK, (x, z) -> coast.at(x, z).rank)
             .add(Fields.FLOW_DIRECTION, (x, z) -> coast.at(x, z).direction)
             .build();
-        final CoarseChannels channels = new CoarseChannels(seed, params, coastFields);
-        this.fields = new FieldRegistry.Builder().include(coastFields)
+        final CoarseRunoff runoff = new CoarseRunoff(params, coastFields);
+        final FieldRegistry runoffFields = new FieldRegistry.Builder().include(coastFields)
+            .add(Fields.COARSE_RUNOFF, (x, z) -> runoff.at(x, z).units)
+            .add(Fields.RUNOFF_STATUS, (x, z) -> runoff.at(x, z).status).build();
+        final CoarseChannels channels = new CoarseChannels(seed, params, runoffFields);
+        this.fields = new FieldRegistry.Builder().include(runoffFields)
             .add(Fields.CONTINENT_SEA_MASK, (x, z) -> model == Model.CONTINENTAL ? coastFields.get(Fields.SEA_MASK, x, z) : continents.score(x, z) <= 0 ? 1 : 0)
             .add(Fields.CHANNEL_DISTANCE, channels::channelDistance)
             .add(Fields.PORT_DISTANCE, channels::portDistance)
+            .add(Fields.CHANNEL_FLOW, channels::channelFlow)
             .build();
     }
 }

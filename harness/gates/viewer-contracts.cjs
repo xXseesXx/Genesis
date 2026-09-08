@@ -37,6 +37,12 @@ async function exercise(path,model){
   evaluate(fs.readFileSync('harness/viewer/app.js','utf8'));await settled();
   assert.equal(evaluate("new URLSearchParams(state.requests.A).get('model')"),model);
   assert.equal(evaluate("new URLSearchParams(state.requests.A).get('layers')"),'baseElevation:1');
+  for(const field of ['coarseRunoff','coarseRunoffStatus','coarseChannelFlow']){
+    assert(evaluate(`state.layers.some(l=>l.id==='${field}')`));
+    evaluate(`state.layers.find(l=>l.id==='${field}').elements.row.children[1].children[1].onclick()`);await settled();
+    assert.equal(evaluate("new URLSearchParams(state.requests.A).get('layers')"),field+':1');
+    assert(elements.get('layerLegend').textContent.length>40);
+  }
   if(model==='continental'){
     assert(evaluate("state.layers.some(l=>l.id==='terrainDetail')"));
     // Exercise the actual dynamically created View button.

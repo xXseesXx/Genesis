@@ -141,7 +141,7 @@ async function init(){
   makeParams();
   meta.fields=meta.fields.filter(f=>isContinental?f.id!=='continentSeaMask':!['continentScaffold','continentSeaMask','terrainDetail'].includes(f.id));
   if(isContinental)for(const f of meta.fields){if(f.id==='baseElevation')f.label='Continental terrain';if(f.id==='continentScaffold')f.label='Raw landmass support';if(f.id==='continentality')f.label='Committed continentality';}
-  const macro=['baseElevation','coarseChannelDistance','drainagePortDistance','seaMask','continentality','tectonicRelief',...(isContinental?['terrainDetail']:[]),'coarseSeaDistance','coarseDrainageRank','coarseFlowDirection'];
+  const macro=['baseElevation','coarseChannelFlow','coarseRunoff','coarseRunoffStatus','coarseChannelDistance','drainagePortDistance','seaMask','continentality','tectonicRelief',...(isContinental?['terrainDetail']:[]),'coarseSeaDistance','coarseDrainageRank','coarseFlowDirection'];
   const fields=[...macro.map(id=>meta.fields.find(f=>f.id===id)).filter(Boolean),...meta.fields.filter(f=>!macro.includes(f.id)&&!['noise','ridges','boundaryType'].includes(f.id)),...meta.fields.filter(f=>['noise','ridges'].includes(f.id)),...meta.fields.filter(f=>f.id==='boundaryType')];
   for(const field of fields){
     const layer={id:field.id,enabled:field.id==='baseElevation',opacity:1};state.layers.push(layer);
@@ -162,7 +162,10 @@ function showLegend(){
     if(f.id==='continentScaffold')return `${f.label}: integer macro-object support BEFORE coarse coastline interpolation. Use Land / sea for the committed coast used by terrain and drainage.`;
     if(f.id==='terrainDetail')return `${f.label}: actual ridged height added to continental land; zero in water, tapered at coasts. Strength: terrainDetailHeight; scale: wavelength.`;
     if(f.id==='tectonicRelief')return `${f.label}: actual coast-tapered height contribution from positive tectonic uplift, controlled by mountainHeight.`;
-    if(f.id==='coarseChannelDistance')return `${f.label}: cyan world-coordinate guides; unresolved coarse routes stay absent. No flux, carving, or globally proven ocean mouths yet.`;
+    if(f.id==='coarseChannelFlow')return `${f.label}: brightness and display width follow resolved upstream rain. Each crossing carries its source flow, not the downstream confluence total. Open catchments omit unknown interior rain; inspect Catchment completeness. No carved beds or globally proven ocean mouths.`;
+    if(f.id==='coarseRunoff')return `${f.label}: exact sum of one unit per upstream resolved land anchor, including self; no rain from sea anchors. Pink = unresolved. These are coarse graph units, not block area or physical discharge. Open catchments have partial totals.`;
+    if(f.id==='coarseRunoffStatus')return `${f.label}: teal = closed under current routing; amber = upstream region touches unresolved routing or numeric support; pink = unresolved anchor. Closed does not prove global ocean connectivity. Never solved from canvas edges.`;
+    if(f.id==='coarseChannelDistance')return `${f.label}: cyan world-coordinate guides; unresolved coarse routes stay absent. Use Flow-weighted river guides for runoff. No carving or globally proven ocean mouths yet.`;
     if(f.id==='drainagePortDistance')return `${f.label}: gold shared-edge crossings; identical from either cell and independent of the viewport.`;
     const details=f.type==='Long'?'colors distinguish exact identities':f.id==='baseElevation'?'blue: below sea · green to pale: higher land · display hillshade':f.id==='seaMask'?'blue: sea-level terminal · green: land (global connectivity pending)':f.id==='coarseFlowDirection'?'pink: unresolved · blue: sea · gold: N · green: E · pale blue: S · coral: W':f.id.startsWith('coarse')?`${f.units} · pink: unresolved · values refer to the coarse anchor`:f.id==='boundaryType'?'blue: divergent · gold: transform · orange: convergent':f.id==='crustType'?'blue: oceanic · green: continental':f.id==='uplift'?'blue: extension · dark: neutral · orange: compression':`${f.min} → ${f.max} ${f.units} (display range)`;
     return `${f.label}: ${details}`;

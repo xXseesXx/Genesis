@@ -10,8 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Geometry consumer of the existing partial coarse graph. Not a global routing solver,
- * flux calculation, river bed, or ocean classifier. All lookups use world-cell keys.
+/** Geometry consumer of the existing partial coarse graph and optional runoff fields.
+ * Not a global routing solver, river bed, or ocean classifier. All lookups use world-cell keys.
  */
 public final class CoarseChannels {
     private static final int CACHE_CELLS = 512;
@@ -70,6 +70,43 @@ public final class CoarseChannels {
     }
     public int channelDistance(long x, long z) { return distance(x, z, false); }
     public int portDistance(long x, long z) { return distance(x, z, true); }
+    /** Transfer on the nearest guide inside distanceCap; ties take the larger transfer.
+     * Both halves of a crossing read the outgoing source's runoff, never the destination's
+     * total (which also includes other tributaries). The returned field has no pixel inputs.
+     */
+    public int channelFlow(long x, long z) {
+        Lattice.check(x); Lattice.check(z);
+        long i = Math.floorDiv(x, spacing), j = Math.floorDiv(z, spacing);
+        long best = (long)distanceCap * distanceCap; int flow = 0;
+        for (int dj = -1; dj <= 1; dj++) for (int di = -1; di <= 1; di++) {
+            long ci = i + di, cj = j + dj;
+            if (!allowed(ci, cj)) continue;
+            Cell c = cell(ci, cj);
+            for (BoundaryPorts.Port p : c.crossings) {
+                long squared = segmentSquared(x, z, c, p);
+                if (squared >= (long)distanceCap * distanceCap || squared > best) continue;
+                int side = p.x == ci * spacing ? 4 : p.x == (ci + 1) * spacing ? 2 : p.z == cj * spacing ? 1 : 3;
+                long sourceI = ci, sourceJ = cj;
+                if (c.direction != side) {
+                    sourceI += side == 2 ? 1 : side == 4 ? -1 : 0;
+                    sourceJ += side == 3 ? 1 : side == 1 ? -1 : 0;
+                }
+                int units = inputs.get(Fields.COARSE_RUNOFF, sourceI * spacing, sourceJ * spacing);
+                if (units < 1) throw new IllegalArgumentException("Active guide requires resolved source runoff");
+                flow = squared < best ? units : Math.max(flow, units); best = squared;
+            }
+        }
+        return flow;
+    }
+    private static long segmentSquared(long x, long z, Cell c, BoundaryPorts.Port p) {
+        long ax = x - c.hubX, az = z - c.hubZ, bx = p.x - c.hubX, bz = p.z - c.hubZ;
+        long dot = ax * bx + az * bz, length = bx * bx + bz * bz;
+        if (dot <= 0) return ax * ax + az * az;
+        long px = x - p.x, pz = z - p.z;
+        if (dot >= length) return px * px + pz * pz;
+        long cross = ax * bz - az * bx;
+        return cross * cross / length;
+    }
     private int distance(long x, long z, boolean onlyPorts) {
         Lattice.check(x); Lattice.check(z);
         long i = Math.floorDiv(x, spacing), j = Math.floorDiv(z, spacing);
@@ -83,16 +120,7 @@ public final class CoarseChannels {
                 long px = x - p.x, pz = z - p.z;
                 long squared;
                 if (onlyPorts) squared = px * px + pz * pz;
-                else {
-                    long ax = x - c.hubX, az = z - c.hubZ, bx = p.x - c.hubX, bz = p.z - c.hubZ;
-                    long dot = ax * bx + az * bz, length = bx * bx + bz * bz;
-                    if (dot <= 0) squared = ax * ax + az * az;
-                    else if (dot >= length) squared = px * px + pz * pz;
-                    else {
-                        long cross = ax * bz - az * bx;
-                        squared = cross * cross / length;
-                    }
-                }
+                else squared = segmentSquared(x, z, c, p);
                 best = Math.min(best, squared);
             }
         }

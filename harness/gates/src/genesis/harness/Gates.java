@@ -39,7 +39,7 @@ public final class Gates {
     private Gates() {}
 
     public static void main(String[] args) throws Exception {
-        if (args.length > 0 && args[0].equals("gallery")) { golden(true); RefinementGates.golden(true); RefinementDemo.writeDiagnostics(); ContinentalGates.main(args); ContinentalWorldGates.main(args); return; }
+        if (args.length > 0 && args[0].equals("gallery")) { golden(true); RefinementGates.golden(true); RefinementDemo.writeDiagnostics(); ContinentalGates.main(args); ContinentalWorldGates.main(args); RunoffGates.diagnostics(); return; }
         long start = System.nanoTime();
         contracts();
         avalanche();
@@ -49,6 +49,7 @@ public final class Gates {
         ContinentalWorldGates.run();
         HydrologyGates.run();
         ChannelGates.run();
+        RunoffGates.run();
         RefinementGates.run();
         determinism();
         golden(false);
@@ -232,7 +233,7 @@ public final class Gates {
                     if (!owner.isEmpty()) check(!subsystems.contains(imported) || imported.equals(owner), "LINT cross-subsystem import: " + path);
                 }
                 if (owner.equals("hydro")) {
-                    check(List.of("BoundaryPorts.java", "CoarseChannels.java", "DrainageRefinement.java").contains(path.getFileName().toString()),
+                    check(List.of("BoundaryPorts.java", "CoarseChannels.java", "CoarseRunoff.java", "DrainageRefinement.java").contains(path.getFileName().toString()),
                         "Extend hydrology integer/literal gates before adding a new module: " + path);
                     check(!Pattern.compile("\\b(?:double|float)\\b|Math\\.(?:sqrt|pow|hypot)|signedUnit|params\\.get\\(").matcher(code).find(),
                         "LINT floating drainage geometry/topology: " + path);
@@ -256,6 +257,7 @@ public final class Gates {
                             || (file.equals("MacroElevation.java") && n.equals("1000.0"))
                             || (file.equals("BoundaryPorts.java") && List.of("2", "3", "4", "20", "0x504f525453L").contains(n))
                             || (file.equals("CoarseChannels.java") && List.of("2", "3", "4", "16", "512").contains(n))
+                            || (file.equals("CoarseRunoff.java") && List.of("2", "3", "4", "16", "4096").contains(n))
                             || (file.equals("DrainageRefinement.java") && List.of("2", "3", "4", "0x524546494e45L").contains(n));
                         check(allowed, "LINT unregistered numeric tuning: " + path + " literal " + n);
                     }
@@ -289,6 +291,12 @@ public final class Gates {
             check(terrain.statusCode()==200 && terrain.headers().firstValue("X-World-Model").orElse("").equals("continental") && pixels(ImageIO.read(new ByteArrayInputStream(terrain.body()))).equals(pixels(terrainExpected)),"HTTP continental render silently uses legacy model");
             var terrainSample=client.send(HttpRequest.newBuilder(URI.create(base+"/api/sample?"+continentalQuery)).build(),HttpResponse.BodyHandlers.ofString());
             check(terrainSample.statusCode()==200 && terrainSample.body().contains("\"model\":\"continental\"") && terrainSample.body().contains("\"baseElevation\":"+continentalWorld.fields.get(Fields.BASE_ELEVATION,-65536,-65536)),"HTTP continental inspector mismatch");
+            for(var field:List.of(Fields.COARSE_RUNOFF,Fields.RUNOFF_STATUS,Fields.CHANNEL_FLOW)) {
+                var runoffPng=client.send(HttpRequest.newBuilder(URI.create(base+"/api/render?"+continentalQuery+"&layers=baseElevation:1,"+field.name+":1")).build(),HttpResponse.BodyHandlers.ofByteArray());
+                var runoffExpected=Renderer.render(continentalWorld,new Renderer.Layer[]{new Renderer.Layer(Fields.BASE_ELEVATION,1),new Renderer.Layer(field,1)},-65536,-65536,4096,32,32).image();
+                check(runoffPng.statusCode()==200&&pixels(ImageIO.read(new ByteArrayInputStream(runoffPng.body()))).equals(pixels(runoffExpected)),"HTTP runoff composition mismatch "+field.name);
+                check(terrainSample.body().contains("\""+field.name+"\":"+continentalWorld.fields.get(field,-65536,-65536)),"HTTP runoff inspector mismatch");
+            }
             var continentalHydro=client.send(HttpRequest.newBuilder(URI.create(base+"/api/hydrology?"+continentalQuery+"&outlets=connectedWater")).build(),HttpResponse.BodyHandlers.ofString());
             String continentalDirect=HydrologyAnalysis.json(continentalWorld,-65536,-65536,4096,32,32,"connectedWater");
             check(continentalHydro.statusCode()==200 && continentalHydro.body().replaceAll("\"milliseconds\":[0-9.E+-]+","\"milliseconds\":0").equals(continentalDirect.replaceAll("\"milliseconds\":[0-9.E+-]+","\"milliseconds\":0")),"Finite analysis does not use continental terrain");
@@ -371,11 +379,19 @@ public final class Gates {
             terrainGuideFrames[i] = Renderer.render(continentalWorld,new Renderer.Layer[]{new Renderer.Layer(Fields.BASE_ELEVATION,1),new Renderer.Layer(Fields.CHANNEL_DISTANCE,1),new Renderer.Layer(Fields.PORT_DISTANCE,1)},-262144,-262144,1024,512,512).nanos();
         }
         double terrainMedian = percentile(terrainFrames,.5), terrainGuideMedian = percentile(terrainGuideFrames,.5);
+        long[] runoffFrames=new long[5],riverFrames=new long[5];
+        for(int i=0;i<5;i++) {
+            runoffFrames[i]=Renderer.render(continentalWorld,new Renderer.Layer[]{new Renderer.Layer(Fields.COARSE_RUNOFF,1)},-262144,-262144,1024,512,512).nanos();
+            riverFrames[i]=Renderer.render(continentalWorld,new Renderer.Layer[]{new Renderer.Layer(Fields.BASE_ELEVATION,1),new Renderer.Layer(Fields.CHANNEL_FLOW,1)},-262144,-262144,1024,512,512).nanos();
+        }
+        double runoffMedian=percentile(runoffFrames,.5),riverMedian=percentile(riverFrames,.5);
         String report = String.format(java.util.Locale.ROOT,
-            "{\"version\":\"%s\",\"java\":\"%s\",\"os\":\"%s\",\"processors\":%d,\"chunkColdP95Ms\":%.4f,\"chunkWarmP95Ms\":%.4f,\"render512MedianMs\":%.2f,\"guideRender512MedianMs\":%.2f,\"continentRender512MedianMs\":%.2f,\"continentalTerrain512MedianMs\":%.2f,\"continentalGuides512MedianMs\":%.2f}%n",
-            Generator.VERSION, System.getProperty("java.version"), System.getProperty("os.name"), Runtime.getRuntime().availableProcessors(), cold95, warm95, frameMedian, guideMedian, continentMedian, terrainMedian, terrainGuideMedian);
+            "{\"version\":\"%s\",\"java\":\"%s\",\"os\":\"%s\",\"processors\":%d,\"chunkColdP95Ms\":%.4f,\"chunkWarmP95Ms\":%.4f,\"render512MedianMs\":%.2f,\"guideRender512MedianMs\":%.2f,\"continentRender512MedianMs\":%.2f,\"continentalTerrain512MedianMs\":%.2f,\"continentalGuides512MedianMs\":%.2f,\"continentalRunoff512MedianMs\":%.2f,\"continentalRivers512MedianMs\":%.2f}%n",
+            Generator.VERSION, System.getProperty("java.version"), System.getProperty("os.name"), Runtime.getRuntime().availableProcessors(), cold95, warm95, frameMedian, guideMedian, continentMedian, terrainMedian, terrainGuideMedian,runoffMedian,riverMedian);
         Files.writeString(Path.of("build/budget.json"), report);
         check(cold95 <= 25 && warm95 <= 1 && frameMedian < 1000 && guideMedian < 1000 && continentMedian < 1000 && terrainMedian < 1000 && terrainGuideMedian < 1000, "BUD over current thresholds: " + report);
+        check(runoffMedian<1000&&riverMedian<1000,"BUD runoff layers over threshold: "+report);
+        System.out.printf("PASS BUD continental runoff: %.1f ms; terrain + flow-weighted rivers %.1f ms median%n",runoffMedian,riverMedian);
         System.out.printf("PASS BUD continental terrain: 512-square %.1f ms; with guides/ports %.1f ms median%n",terrainMedian,terrainGuideMedian);
         System.out.printf("PASS BUD continental scaffold: 512-square %.1f ms median%n", continentMedian);
         System.out.printf("PASS BUD: all %d fields cold p95 %.3f ms/chunk, cached p95 %.3f ms/chunk; 512-square elevation %.1f ms, guides+ports %.1f ms median%n", g.fields.ids().size(), cold95, warm95, frameMedian, guideMedian);
