@@ -1,0 +1,30 @@
+name: Standalone core gates
+on:
+  push:
+    paths: ['core/**', 'harness/**', 'genesis.ps1', '.github/workflows/core.yml']
+  pull_request:
+    paths: ['core/**', 'harness/**', 'genesis.ps1', '.github/workflows/core.yml']
+  workflow_dispatch:
+jobs:
+  standalone:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile Java 8 core and run standalone gates
+        shell: pwsh
+        run: ./genesis.ps1 test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: genesis-${{ matrix.os }}
+          path: |
+            build/gallery/
+            build/budget.json
+            build/genesis-core.jar

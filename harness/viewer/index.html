@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Genesis · Field laboratory</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<header><div class="brand"><span class="mark">G</span><div><h1>GENESIS</h1><p>Procedural world laboratory</p></div></div><span class="badge">M2a / COASTS & RELIEF</span><span id="connection">Connecting to core…</span></header>
+<main>
+<aside>
+  <div class="section-title">01 <h2>World configuration</h2></div>
+  <label for="seedA">Seed A <span>signed 64-bit integer</span></label><input id="seedA" value="42" inputmode="numeric" spellcheck="false">
+  <label class="check"><input type="checkbox" id="compare"> Compare two worlds</label>
+  <div id="compareOptions" hidden><label for="seedB">Seed B</label><input id="seedB" value="137" inputmode="numeric"><label for="paramsB">B parameter overrides <span>JSON; other values follow A</span></label><textarea id="paramsB" rows="3" spellcheck="false">{}</textarea></div>
+  <div class="section-title">02 <h2>Generator parameters</h2><button id="resetParams" class="text-button">Reset</button></div><div id="params"></div>
+  <div class="note"><b>Coasts commit before relief.</b><p>Macro elevation preserves integer coarse coastlines. Pink drainage cells are unresolved by the bounded search; rivers and global ocean connectivity are still to come.</p></div>
+</aside>
+<section class="workspace">
+  <div class="toolbar"><div><span class="eyebrow">FIELD EXPLORER</span><h2 id="fieldTitle">Plates</h2></div><div class="actions"><button id="home">Origin</button><button id="zoomOut" aria-label="Zoom out">−</button><button id="zoomIn" aria-label="Zoom in">+</button><button id="export">Export PNG</button></div></div>
+  <section class="layer-bar" aria-label="Field layers"><div class="layer-heading"><span class="eyebrow">FIELD LAYERS</span><span>View selects a layer · checkboxes combine layers left to right</span></div><div id="layers"></div></section>
+  <div id="layerLegend" class="layer-legend" aria-live="polite"></div>
+  <div class="map-grid" id="maps">
+    <figure><figcaption><span class="world-tag">A</span> <span id="captionA">Seed 42</span><span class="map-state">PURE FIELD</span></figcaption><canvas id="mapA" width="512" height="512" aria-label="World A field map"></canvas><div class="map-footer"><span id="regime">Planetary</span><span id="scale">64 blocks / pixel</span></div></figure>
+    <figure id="figureB" hidden><figcaption><span class="world-tag">B</span> <span id="captionB">Seed 137</span><span class="map-state">SYNCED VIEW</span></figcaption><canvas id="mapB" width="512" height="512" aria-label="World B field map"></canvas><div class="map-footer"><span>Shared coordinates</span><span>Independent seed + overrides</span></div></figure>
+  </div>
+  <div class="map-info"><span id="coords">x 0 · z 0</span><span>Drag to pan · Scroll to zoom · Click to inspect</span></div>
+  <div id="error" role="alert" hidden></div>
+  <section class="readouts"><div><span class="eyebrow">RENDER / CORE</span><strong id="timing">—</strong><p id="range">Waiting for first tile</p></div><div><span class="eyebrow">COLUMN INSPECTOR</span><strong id="inspectCoords">Select a location</strong><dl id="inspection"><dt>All registered fields appear here</dt></dl></div><div><span class="eyebrow">SAMPLING CONTRACT</span><strong>Same point. Same value.</strong><p>Zoom changes sample spacing only. Plate identities remain exact 64-bit keys; uplift is a motion-derived signal, not terrain height.</p></div></section>
+  <footer><span id="version">genesis-m1</span><span>Standalone Java core · No Minecraft dependencies</span></footer>
+</section>
+</main><script src="/app.js"></script>
+</body></html>
