@@ -2,6 +2,12 @@ package genesis.core.fields;
 
 public final class Fields {
     private Fields() {}
+    public static final FieldId<RockColumn> ROCK_COLUMN = new FieldId<RockColumn>("rockColumn","Stratigraphic column","model metres; material intervals, not terrain shape",RockColumn.class,0,1);
+    public static final FieldId<Integer> ROCK_TYPE = new FieldId<Integer>("rockType","Surface bedrock","0 basalt / 1 granite / 2 shale / 3 limestone / 4 sandstone",Integer.class,0,4);
+    public static final FieldId<Integer> HARDNESS = new FieldId<Integer>("rockHardness","Rock resistance","relative model permille, not Mohs hardness",Integer.class,0,1000);
+    public static final FieldId<Integer> WEATHERABILITY = new FieldId<Integer>("rockWeatherability","Rock weatherability","relative model permille; no weather simulation yet",Integer.class,0,1000);
+    public static final FieldId<Integer> FORMATION_AGE = new FieldId<Integer>("formationAge","Formation age","synthetic Ma inherited from crust chronology",Integer.class,0,4500);
+    public static final FieldId<Integer> STRATA_DISPLACEMENT = new FieldId<Integer>("strataDisplacement","Broad fold displacement","model metres; translated contacts, not terrain uplift",Integer.class,-4000,4000);
     public static final FieldId<Double> TERRAIN_DETAIL = new FieldId<Double>("terrainDetail", "Terrain detail height", "model metres; coast-tapered ridge contribution", Double.class, 0, 4000);
     public static final FieldId<Double> TECTONIC_RELIEF = new FieldId<Double>("tectonicRelief", "Tectonic relief height", "model metres; coast-tapered uplift contribution", Double.class, 0, 4000);
     public static final FieldId<Integer> CONTINENT_SCAFFOLD = new FieldId<Integer>("continentScaffold", "Continental scaffold (candidate)", "signed macro-object score; not elevation", Integer.class, -1000, 1000);

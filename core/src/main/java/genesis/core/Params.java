@@ -48,6 +48,20 @@ public final class Params {
         add(specs, new Spec("mountainHeight", 2600, 0, 8000, 100, true, "Uplift contribution, tapered to zero at committed coasts"));
         add(specs, new Spec("terrainDetailHeight", 900, 0, 4000, 50, true, "Continental mode only: ridged relief in model metres; coast-tapered, wavelength controls its scale"));
         add(specs, new Spec("seaSearchRadius", 12, 1, 32, 1, true, "Maximum coarse Manhattan search radius; unresolved stays explicit"));
+        add(specs, new Spec("geologyDatum", 1500, -10000, 10000, 100, true, "Reference elevation of upper sediment contact; does not change terrain"));
+        add(specs, new Spec("geologyLayerThickness", 400, 20, 2000, 20, true, "Limestone thickness; underlying shale is twice this; outer units are unbounded volumes"));
+        add(specs, new Spec("geologyFoldScale", 16384, 1024, 1048576, 1024, true, "Broad nonperiodic contact deformation spacing in blocks"));
+        add(specs, new Spec("geologyFoldAmplitude", 1200, 0, 4000, 100, true, "Maximum vertical translation of all stratigraphic contacts"));
+        add(specs, new Spec("basaltHardness", 750, 1, 1000, 10, true, "Basalt relative erosion resistance; model assumption, not measured Mohs hardness"));
+        add(specs, new Spec("graniteHardness", 850, 1, 1000, 10, true, "Granite relative erosion resistance; model assumption"));
+        add(specs, new Spec("shaleHardness", 250, 1, 1000, 10, true, "Shale relative erosion resistance; model assumption"));
+        add(specs, new Spec("limestoneHardness", 450, 1, 1000, 10, true, "Limestone relative erosion resistance; model assumption"));
+        add(specs, new Spec("sandstoneHardness", 650, 1, 1000, 10, true, "Sandstone relative erosion resistance; model assumption"));
+        add(specs, new Spec("basaltWeatherability", 350, 0, 1000, 10, true, "Basalt weatherability coefficient; model assumption"));
+        add(specs, new Spec("graniteWeatherability", 250, 0, 1000, 10, true, "Granite weatherability coefficient; model assumption"));
+        add(specs, new Spec("shaleWeatherability", 800, 0, 1000, 10, true, "Shale weatherability coefficient; model assumption"));
+        add(specs, new Spec("limestoneWeatherability", 700, 0, 1000, 10, true, "Limestone weatherability coefficient; model assumption"));
+        add(specs, new Spec("sandstoneWeatherability", 400, 0, 1000, 10, true, "Sandstone weatherability coefficient; model assumption"));
         SPECS = Collections.unmodifiableMap(specs);
     }
     private static void add(Map<String, Spec> specs, Spec spec) { specs.put(spec.id, spec); }

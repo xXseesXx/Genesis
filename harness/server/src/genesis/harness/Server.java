@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer;
 import genesis.core.Generator;
 import genesis.core.Params;
 import genesis.core.fields.FieldId;
+import genesis.core.fields.Fields;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -86,7 +87,8 @@ public final class Server {
                         Object value = generator.fields.get(id, x, z);
                         result.append(quote(id.name)).append(':').append(value instanceof Long ? quote(value.toString()) : value.toString());
                     }
-                    send(exchange, 200, "application/json", bytes(result.append("}}").toString())); return;
+                    result.append("},\"column\":").append(GeologyJson.column(generator.columns.get(Fields.ROCK_COLUMN,x,z))).append('}');
+                    send(exchange, 200, "application/json", bytes(result.toString())); return;
                 }
                 if (path.equals("/api/render")) {
                     int w = Math.toIntExact(number(query, "width", 512)), h = Math.toIntExact(number(query, "height", 512));

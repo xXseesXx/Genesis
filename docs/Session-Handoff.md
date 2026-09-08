@@ -1,6 +1,6 @@
 # Genesis session handoff
 
-Checkpoint: 2026-09-08, `genesis-m3a-v5`. Read this first after a context reset; inspect `git status` and the current commit/CI before making changes. This note preserves project context, not a claim that the conversation runtime was compacted.
+Checkpoint: 2026-09-08, `genesis-m5a-v1`. Read this first after a context reset; inspect `git status` and the current commit/CI before making changes. This note preserves project context, not a claim that the conversation runtime was compacted.
 
 ## User requirements
 
@@ -24,7 +24,11 @@ PowerShell cwd: `C:\Users\fabib\Documents\Minecraft\1.7.10\Genesis`.
 
 ## Current implementation
 
-`Generator` is the composition root. Two-argument construction is LEGACY; third argument `Generator.Model.CONTINENTAL` selects the integrated continent model. Model + seed + full Params + version define a world. FieldRegistry/TileCache preserve exact typed values; Long identities are JSON strings. 27 fields, 28 numeric parameters. Noise/plate topology remain upstream inputs in both models.
+`Generator` is the composition root. Two-argument construction is LEGACY; third argument `Generator.Model.CONTINENTAL` selects the integrated continent model. Model + seed + full Params + version define a world. FieldRegistry/TileCache preserve exact typed values; Long identities are JSON strings. 32 scalar fields, one structured column field, 42 numeric parameters. Noise/plate topology remain upstream inputs in both models.
+
+Latest user direction: do independent/easier milestones before returning to water where possible. Implemented M5a geology groundwork, not full M5. `geology/Stratigraphy` consumes registered BASE_ELEVATION/CRUST_TYPE/CRUST_AGE; independent Q4096 seed-domain broad deformation translates three contacts D-3t, D-t, D. Basement basalt/granite, shale (2t), limestone (t), sandstone above; outer units are unbounded material-volume intervals clipped by terrain. Contact ties belong to upper unit. Surface=floor(current uncarved height). Synthetic ages crustAge*(4-index)/4, not historical simulation. Four geometry parameters + ten relative material coefficients. Existing terrain/water unchanged, verified by counterfactuals. Do not feed final eroded exposure back into its own routing/incision inputs. See docs/Stratigraphy.md.
+
+New scalar fields: rockType, rockHardness, rockWeatherability, formationAge, strataDisplacement. `Generator.columns` is a separate typed FieldRegistry with Fields.ROCK_COLUMN (immutable fields/RockColumn DTO); get/values support structured data, numeric tile rejects it. `/api/sample` appends structured column; both inspectors show rock intervals/age/surface marker. All scalar layers remain top-bar controls. Code-generated geology-strata.png inspected (three maps + terrain-clipped section). Eight new column/scalar hashes in geology.properties; continental-world.properties gains new default params only, old hashes unchanged. GeologyGates includes contact/quantization/thickness/age/coefficients, structured cold/bulk/zoom/concurrency, no terrain/water feedback. Budget includes continentalGeology512MedianMs. Full M5 faults/intrusions/event histories/orientation, M6 erosion/scenario loader still absent.
 
 Continental flow: immutable `ContinentalScaffold` → registered raw integer support → `CoastTopology` optional registered score input → fixed coarse triangulation → shared mask/continentality/elevation/bounded drainage → `CoarseChannels`/`BoundaryPorts`. In continental mode the candidate mask aliases committed seaMask, not the un-interpolated raw shape. The raw support remains a clearly labeled diagnostic.
 
@@ -59,6 +63,6 @@ New `ContinentalWorldGates`: coast/height/mask agreement, relief independence of
 
 Remaining before the original M9 scope: infinite-world root/ocean contract and full hydrology cascade; channel/valley terrain conditioning; geological events/stratigraphy/folds/faults; differential erosion and scenario loading; climate; sediment/soil/vegetation; integrated correctness/morphology/performance acceptance. Introduce coarse hardness/rainfall inputs before final dependent commitments to avoid circular generation. Uniform inputs and explicit fixtures are valid early stages.
 
-Suggested next bounded work: multilevel refinement under explicit parent contracts, then downhill channel-bed/valley primitives on current placeholder relief. Continents' visual polish can wait, but global hydrology cannot be called complete without constructive terminal/root commitments. See the prior user-facing roadmap discussion; do not infer that a field interface makes arbitrary noise a valid drainage-root provider.
+Latest next-work preference: do independently useful geology faults/intrusions or explicit input fixtures/scenario loading before returning to water where practical. M5a is only a material-volume foundation. When returning to water: multilevel refinement under explicit parent contracts, then downhill channel-bed/valley primitives on current placeholder relief. Continents' visual polish can wait, but global hydrology cannot be called complete without constructive terminal/root commitments. Do not infer that a field interface makes arbitrary noise a valid drainage-root provider. Full M6 erosion, M7 rainfall coupling and M8 sediment still have unfinished water dependencies.
 
 When integrating Minecraft later, import the GTNH ExampleMod starter under `mc-adapter/` without replacing Genesis Git/root files. Caves, ores, full ecology and structures remain parked beyond initial realization.

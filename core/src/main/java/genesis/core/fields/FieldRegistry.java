@@ -50,6 +50,7 @@ public final class FieldRegistry {
     }
     public double[] tile(FieldId<?> id, long x, long z, long step, int width, int height) {
         if (id.type == Long.class) throw new IllegalArgumentException("Use exact values for 64-bit identifiers");
+        if (!Number.class.isAssignableFrom(id.type)) throw new IllegalArgumentException("Use exact get/values for structured fields");
         Object[] values = values(id, x, z, step, width, height);
         double[] result = new double[values.length];
         for (int i = 0; i < result.length; i++) result[i] = ((Number) values[i]).doubleValue();

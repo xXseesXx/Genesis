@@ -9,10 +9,11 @@ import genesis.core.elevation.MacroElevation;
 import genesis.core.elevation.ContinentalScaffold;
 import genesis.core.hydro.CoarseChannels;
 import genesis.core.hydro.CoarseRunoff;
+import genesis.core.geology.Stratigraphy;
 
 /** Composition root: only here may concrete field implementations be wired together. */
 public strictfp final class Generator {
-    public static final String VERSION = "genesis-m3a-v5";
+    public static final String VERSION = "genesis-m5a-v1";
     public enum Model {
         LEGACY("legacy"), CONTINENTAL("continental");
         public final String id;
@@ -22,6 +23,8 @@ public strictfp final class Generator {
     public final Model model;
     public final Params params;
     public final FieldRegistry fields;
+    /** Structured fields kept separate from the numeric raster-layer catalog. */
+    public final FieldRegistry columns;
 
     public Generator(long seed, Params params) {
         this(seed, params, Model.LEGACY);
@@ -67,7 +70,14 @@ public strictfp final class Generator {
             .add(Fields.COARSE_RUNOFF, (x, z) -> runoff.at(x, z).units)
             .add(Fields.RUNOFF_STATUS, (x, z) -> runoff.at(x, z).status).build();
         final CoarseChannels channels = new CoarseChannels(seed, params, runoffFields);
+        final Stratigraphy geology = new Stratigraphy(seed, params, coastFields);
+        this.columns = new FieldRegistry.Builder().add(Fields.ROCK_COLUMN, geology::column).build();
         this.fields = new FieldRegistry.Builder().include(runoffFields)
+            .add(Fields.ROCK_TYPE, geology::rock)
+            .add(Fields.HARDNESS, geology::hardness)
+            .add(Fields.WEATHERABILITY, geology::weatherability)
+            .add(Fields.FORMATION_AGE, geology::age)
+            .add(Fields.STRATA_DISPLACEMENT, geology::displacement)
             .add(Fields.CONTINENT_SEA_MASK, (x, z) -> model == Model.CONTINENTAL ? coastFields.get(Fields.SEA_MASK, x, z) : continents.score(x, z) <= 0 ? 1 : 0)
             .add(Fields.CHANNEL_DISTANCE, channels::channelDistance)
             .add(Fields.PORT_DISTANCE, channels::portDistance)

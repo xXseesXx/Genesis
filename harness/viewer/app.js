@@ -92,6 +92,14 @@ async function inspect(x,z) {
       const dt=document.createElement('dt'), dd=document.createElement('dd');dt.textContent=side+' / '+key;
       dd.textContent=typeof value==='string'?value:Number.isInteger(value)?String(value):value.toFixed(6);$('inspection').append(dt,dd);
     }
+    for(const {side,data} of results)if(data.column){
+      const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=side+' / Stratigraphic column';
+      dd.textContent='Surface '+data.column.surfaceY+' model m; contact intervals, not soil or carved terrain.';$('inspection').append(dt,dd);
+      for(const layer of [...data.column.layers].reverse()){
+        const name=document.createElement('dt'),value=document.createElement('dd');name.textContent=side+' / '+layer.rock+(layer.atSurface?' (surface)':'');
+        value.textContent=(layer.lower??'-infinity')+' to '+(layer.upper??'+infinity')+' m; '+layer.formationAge+' synthetic Ma';$('inspection').append(name,value);
+      }
+    }
   } catch(e) { if(revision===inspectionRevision) error(e.message); }
 }
 for(const side of ['A','B']) {
@@ -161,6 +169,10 @@ function showLegend(){
     const f=meta.fields.find(f=>f.id===layer.id);
     if(f.id==='continentScaffold')return `${f.label}: integer macro-object support BEFORE coarse coastline interpolation. Use Land / sea for the committed coast used by terrain and drainage.`;
     if(f.id==='terrainDetail')return `${f.label}: actual ridged height added to continental land; zero in water, tapered at coasts. Strength: terrainDetailHeight; scale: wavelength.`;
+    if(f.id==='rockType')return `${f.label}: basalt (grey), granite (pink), shale (olive), limestone (pale green), sandstone (ochre). Current terrain intersects a folded material stack; no erosion or water feedback yet. Click to inspect the column. Includes seabed bedrock, not soil.`;
+    if(f.id==='rockHardness'||f.id==='rockWeatherability')return `${f.label}: material-specific relative coefficient, not measured physical units. These inputs do not yet change terrain or river routes.`;
+    if(f.id==='formationAge')return `${f.label}: synthetic crust chronology, with successively younger sediment units. Not a simulated geological history.`;
+    if(f.id==='strataDisplacement')return `${f.label}: bounded, seeded broad folds translate all contacts together without changing layer thickness. Does not move terrain. Set geologyFoldAmplitude to zero for flat contacts.`;
     if(f.id==='tectonicRelief')return `${f.label}: actual coast-tapered height contribution from positive tectonic uplift, controlled by mountainHeight.`;
     if(f.id==='coarseChannelFlow')return `${f.label}: brightness and display width follow resolved upstream rain. Each crossing carries its source flow, not the downstream confluence total. Open catchments omit unknown interior rain; inspect Catchment completeness. No carved beds or globally proven ocean mouths.`;
     if(f.id==='coarseRunoff')return `${f.label}: exact sum of one unit per upstream resolved land anchor, including self; no rain from sea anchors. Pink = unresolved. These are coarse graph units, not block area or physical discharge. Open catchments have partial totals.`;

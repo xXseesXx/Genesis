@@ -85,6 +85,7 @@ public final class Renderer {
         return (r << 16) | (g << 8) | blue;
     }
     public static int color(FieldId<?> field, double value) {
+        if (field == Fields.ROCK_TYPE) return new int[]{0x575968,0xc6a6a5,0x77704e,0xbed3c5,0xdca967}[(int)value];
         if (field == Fields.RUNOFF_STATUS) return value < 0 ? 0xc261a3 : value == 0 ? 0x448f84 : 0xe6af62;
         if (field == Fields.COARSE_RUNOFF || field == Fields.CHANNEL_FLOW) {
             if (value < 0) return 0xc261a3;
@@ -111,7 +112,7 @@ public final class Renderer {
         if (field == Fields.CRUST_TYPE) return value == 0 ? 0x285c78 : 0xa6bb7b;
         double t = Math.max(0, Math.min(1, (value - field.displayMin) / (field.displayMax - field.displayMin)));
         // UI palette anchors, not generator parameters.
-        int[] stops = field == Fields.UPLIFT || field == Fields.VELOCITY_X || field == Fields.VELOCITY_Z
+        int[] stops = field == Fields.UPLIFT || field == Fields.VELOCITY_X || field == Fields.VELOCITY_Z || field == Fields.STRATA_DISPLACEMENT
             ? new int[] { 0x2d85ac, 0x172a33, 0xf3b478 }
             : field.name.equals("ridges")
             ? new int[] { 0x151a27, 0x4c5776, 0xaf97b6, 0xffdcb0 }
