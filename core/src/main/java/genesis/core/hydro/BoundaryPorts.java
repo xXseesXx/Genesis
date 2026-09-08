@@ -53,9 +53,11 @@ public final class BoundaryPorts {
         Lattice.check(x); Lattice.check(z);
         Lattice.check(Math.addExact(face.axis == VERTICAL ? z : x, s));
         long hash = Hash64.hash(Hash64.stream(seed, face.axis), face.level, face.i, face.j);
-        // Central-half support avoids corner crossings. Odd offsets never lie on a finer
-        // level's grid line (all supported spacings are multiples of 1024).
+        // Central-half support avoids outer corners. Standard spacings produce odd
+        // offsets. Exclude base multiples for arbitrary custom spacings as well:
+        // every finer grid spacing is itself a multiple of baseSpacing.
         long offset = s / 4 + 1 + 2 * Math.floorMod(hash, s / 4);
+        if (offset % baseSpacing == 0) offset++;
         return new Port(face, face.axis == VERTICAL ? x : x + offset, face.axis == VERTICAL ? z + offset : z);
     }
     /** Find the unique child face containing an inherited commitment. Keep this Port's

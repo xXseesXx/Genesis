@@ -33,7 +33,7 @@ final class ChannelGates {
         System.out.println("PASS CHANNEL: canonical face/child ownership, integer distance reference, shuffled/cold/concurrent overlap, exact independently stitched PNGs");
     }
     private static void portOwnership() {
-        for (long seed : new long[]{0,42,-1,Long.MIN_VALUE,Long.MAX_VALUE}) for (int base : new int[]{1024,4096,16384}) {
+        for (long seed : new long[]{0,42,-1,Long.MIN_VALUE,Long.MAX_VALUE}) for (int base : new int[]{1024,1025,1026,4096,4097,4098,16383,16384}) {
             var ports = new BoundaryPorts(seed, new Params(Map.of("coarseSpacing", (double) base)));
             for (int level : new int[]{0,1,5,20}) for (long i : new long[]{-5,-1,0,3}) for (long j : new long[]{-3,-1,0,4}) {
                 var east = ports.face(level,i,j,2); var west = ports.face(level,i+1,j,4);
@@ -43,7 +43,7 @@ final class ChannelGates {
                     var p = ports.port(face); var repeat = new BoundaryPorts(seed,new Params(Map.of("coarseSpacing",(double)base))).port(face);
                     check(p.x == repeat.x && p.z == repeat.z, "Cold port mismatch");
                     long s = ports.spacing(level), along = face.axis == 0 ? p.z-face.j*s : p.x-face.i*s;
-                    check(along > s/4 && along < 3*s/4 && (along&1)==1, "Port leaves central half or lies on a child corner");
+                    check(along > s/4 && along < 3*s/4 && along%base!=0, "Port leaves central half or lies on a child corner");
                     for(int finer=0;finer<level;finer++) {
                         var child=ports.childFace(p,finer); long cs=ports.spacing(finer);
                         check(p.x >= child.i*cs && p.z >= child.j*cs && p.x < (child.i+1)*cs && p.z < (child.j+1)*cs, "Inherited port outside unique child face");

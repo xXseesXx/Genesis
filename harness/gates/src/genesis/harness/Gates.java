@@ -39,7 +39,7 @@ public final class Gates {
     private Gates() {}
 
     public static void main(String[] args) throws Exception {
-        if (args.length > 0 && args[0].equals("gallery")) { golden(true); return; }
+        if (args.length > 0 && args[0].equals("gallery")) { golden(true); RefinementGates.golden(true); RefinementDemo.writeDiagnostics(); return; }
         long start = System.nanoTime();
         contracts();
         avalanche();
@@ -47,6 +47,7 @@ public final class Gates {
         CoastGates.run();
         HydrologyGates.run();
         ChannelGates.run();
+        RefinementGates.run();
         determinism();
         golden(false);
         lint();
@@ -228,7 +229,7 @@ public final class Gates {
                     if (!owner.isEmpty()) check(!subsystems.contains(imported) || imported.equals(owner), "LINT cross-subsystem import: " + path);
                 }
                 if (owner.equals("hydro")) {
-                    check(List.of("BoundaryPorts.java", "CoarseChannels.java").contains(path.getFileName().toString()),
+                    check(List.of("BoundaryPorts.java", "CoarseChannels.java", "DrainageRefinement.java").contains(path.getFileName().toString()),
                         "Extend hydrology integer/literal gates before adding a new module: " + path);
                     check(!Pattern.compile("\\b(?:double|float)\\b|Math\\.(?:sqrt|pow|hypot)|signedUnit|params\\.get\\(").matcher(code).find(),
                         "LINT floating drainage geometry/topology: " + path);
@@ -250,7 +251,8 @@ public final class Gates {
                             || (file.equals("CoastTopology.java") && List.of("2", "3", "4", "16", "1000", "8192", "4096", "0x434f415354L").contains(n))
                             || (file.equals("MacroElevation.java") && n.equals("1000.0"))
                             || (file.equals("BoundaryPorts.java") && List.of("2", "3", "4", "20", "0x504f525453L").contains(n))
-                            || (file.equals("CoarseChannels.java") && List.of("2", "3", "4", "16", "512").contains(n));
+                            || (file.equals("CoarseChannels.java") && List.of("2", "3", "4", "16", "512").contains(n))
+                            || (file.equals("DrainageRefinement.java") && List.of("2", "3", "4", "0x524546494e45L").contains(n));
                         check(allowed, "LINT unregistered numeric tuning: " + path + " literal " + n);
                     }
                 }
@@ -262,7 +264,7 @@ public final class Gates {
     private static void http() throws Exception {
         try (Server.Running server = Server.start(0); HttpClient client = HttpClient.newHttpClient()) {
             String base = "http://127.0.0.1:" + server.port();
-            for (String path : List.of("/", "/style.css", "/app.js", "/hydrology.html", "/hydrology.js", "/hydrology.css", "/api/meta", "/api/sample?seed=-9223372036854775808&x=-1&z=16")) {
+            for (String path : List.of("/", "/style.css", "/app.js", "/hydrology.html", "/hydrology.js", "/hydrology.css", "/refinement.html", "/refinement.js", "/refinement.css", "/api/meta", "/api/sample?seed=-9223372036854775808&x=-1&z=16")) {
                 var response = client.send(HttpRequest.newBuilder(URI.create(base + path)).build(), HttpResponse.BodyHandlers.ofString());
                 check(response.statusCode() == 200 && !response.body().isEmpty(), "HTTP GET " + path);
             }
@@ -276,6 +278,17 @@ public final class Gates {
             BufferedImage expected = Renderer.render(new Generator(42, Params.defaults()), new Renderer.Layer[] {
                 new Renderer.Layer(Fields.NOISE, 1), new Renderer.Layer(Fields.RIDGES, .25)}, -32, -32, 8, 32, 32).image();
             check(pixels(actual).equals(pixels(expected)), "HTTP composition differs from core render");
+            var refined = client.send(HttpRequest.newBuilder(URI.create(base + "/api/refinement?seed=42")).build(), HttpResponse.BodyHandlers.ofString());
+            check(refined.statusCode() == 200 && refined.body().equals(RefinementDemo.json(RefinementDemo.create(Map.of("seed","42")))), "HTTP refinement contract mismatch");
+            var refinedPng = client.send(HttpRequest.newBuilder(URI.create(base + "/api/refinement.png?seed=42&layer=flux")).build(), HttpResponse.BodyHandlers.ofByteArray());
+            check(refinedPng.statusCode() == 200 && pixels(ImageIO.read(new ByteArrayInputStream(refinedPng.body())))
+                .equals(pixels(RefinementDemo.render(RefinementDemo.create(Map.of("seed","42")),"flux"))), "HTTP refinement PNG mismatch");
+            var hugeFlux = client.send(HttpRequest.newBuilder(URI.create(base + "/api/refinement?rain=0&inflow=9223372036854775807")).build(), HttpResponse.BodyHandlers.ofString());
+            check(hugeFlux.statusCode() == 200 && hugeFlux.body().contains("\"finalOutflow\":\"9223372036854775807\""), "HTTP lost exact 64-bit flow units");
+            for (String query : List.of("level=0", "level=21", "rain=-1", "inflow=-1", "rain=9223372036854775807", "rain=1&inflow=9223372036854775807", "x=1099511627776", "z=-1099511627777", "layer=noise", "width=512", "seaThreshold=700", "outlets=edges", "seed=1&seed=2")) {
+                var response = client.send(HttpRequest.newBuilder(URI.create(base + "/api/refinement?" + query)).build(), HttpResponse.BodyHandlers.ofString());
+                check(response.statusCode() == 400, "HTTP invalid refinement contract: " + query);
+            }
             String hydroQuery = "seed=-9223372036854775808&x=-65536&z=-65536&width=8&height=8&step=4096";
             var hydro = client.send(HttpRequest.newBuilder(URI.create(base + "/api/hydrology?" + hydroQuery)).build(), HttpResponse.BodyHandlers.ofString());
             String direct = HydrologyAnalysis.json(new Generator(Long.MIN_VALUE, Params.defaults()), -65536, -65536, 4096, 8, 8);

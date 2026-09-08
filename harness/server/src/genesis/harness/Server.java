@@ -58,7 +58,17 @@ public final class Server {
             String path = exchange.getRequestURI().getPath();
             if (path.equals("/api/meta")) { send(exchange, 200, "application/json", bytes(metadata())); return; }
             if (path.startsWith("/api/")) {
-                Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
+                boolean refinement = path.equals("/api/refinement") || path.equals("/api/refinement.png");
+                Map<String, String> query = query(exchange.getRequestURI().getRawQuery(), refinement);
+                if (refinement) {
+                    var demo = RefinementDemo.create(query);
+                    if (path.endsWith(".png")) {
+                        ByteArrayOutputStream out = new ByteArrayOutputStream();
+                        ImageIO.write(RefinementDemo.render(demo, query.getOrDefault("layer", "network")), "png", out);
+                        send(exchange, 200, "image/png", out.toByteArray());
+                    } else send(exchange, 200, "application/json", bytes(RefinementDemo.json(demo)));
+                    return;
+                }
                 if (query.containsKey("outlets") && !path.equals("/api/hydrology"))
                     throw new IllegalArgumentException("outlets is a finite hydrology option, not a world parameter");
                 Generator generator = generator(query);
@@ -101,7 +111,8 @@ public final class Server {
                 send(exchange, 404, "text/plain", bytes("Unknown endpoint")); return;
             }
             String file = switch (path) { case "/" -> "index.html"; case "/app.js" -> "app.js"; case "/style.css" -> "style.css";
-                case "/hydrology.html" -> "hydrology.html"; case "/hydrology.js" -> "hydrology.js"; case "/hydrology.css" -> "hydrology.css"; default -> null; };
+                case "/hydrology.html" -> "hydrology.html"; case "/hydrology.js" -> "hydrology.js"; case "/hydrology.css" -> "hydrology.css";
+                case "/refinement.html" -> "refinement.html"; case "/refinement.js" -> "refinement.js"; case "/refinement.css" -> "refinement.css"; default -> null; };
             if (file == null) { send(exchange, 404, "text/plain", bytes("Not found")); return; }
             String type = file.endsWith("html") ? "text/html; charset=utf-8" : file.endsWith("js") ? "text/javascript; charset=utf-8" : "text/css; charset=utf-8";
             send(exchange, 200, type, Files.readAllBytes(VIEWER.resolve(file)));
@@ -119,7 +130,7 @@ public final class Server {
             send(exchange, 500, "application/json", bytes("{\"error\":\"Internal harness error; see server console\"}"));
         } finally { exchange.close(); }
     }
-    private static Map<String, String> query(String raw) {
+    private static Map<String, String> query(String raw, boolean refinement) {
         Map<String, String> result = new LinkedHashMap<>();
         if (raw == null) return result;
         if (raw.length() > 8192) throw new IllegalArgumentException("Query too long");
@@ -130,7 +141,8 @@ public final class Server {
             if (result.put(key, value) != null) throw new IllegalArgumentException("Duplicate query key: " + key);
         }
         for (String key : result.keySet())
-            if (!List.of("seed", "x", "z", "width", "height", "step", "layers", "outlets").contains(key) && !Params.SPECS.containsKey(key))
+            if (!List.of("seed", "x", "z", "width", "height", "step", "layers", "outlets").contains(key) && !Params.SPECS.containsKey(key)
+                && !(refinement && List.of("level", "rain", "inflow", "layer").contains(key)))
                 throw new IllegalArgumentException("Unknown query key: " + key);
         return result;
     }

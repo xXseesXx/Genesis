@@ -6,6 +6,8 @@ The **M0 foundation, M1 tectonics, and M2a coast/elevation prototype are impleme
 
 An independent **finite hydrology reference** now adds depression filling, D8 flood-tree routing, catchments, exact land-cell runoff, and sampled water connectivity in a separate fixed-region laboratory. It deliberately does not change the production terrain fields. See [finite hydrology contracts](docs/Finite-Hydrology.md).
 
+A **conditioned four-child refinement kernel** now preserves inherited crossings and exact parent flow budgets. Its [two-parent laboratory](http://127.0.0.1:8787/refinement.html) has top-bar diagnostic layers and exact ledgers. This is a tested local building block, not a complete infinite-world cascade. See [the refinement contract and continental-landmass requirement](docs/Conditioned-Refinement.md).
+
 ## Run
 
 Requires JDK 21 (`java`, `javac`, `jar` on PATH) and PowerShell. No downloaded Java dependencies, Gradle installation, Minecraft installation, or npm packages are needed for the standalone prototype.
@@ -70,6 +72,7 @@ Coordinates are signed integer block positions. Bulk tiles are row-major and sam
 - COAST: analytic coast fixture, exact land/height sign agreement, coast-preserving relief changes, zoom/edge stability, independent nearest-terminal rank reference, monotone resolved paths, explicit unresolved behavior, and memoization checks.
 - HYDRO reference: analytic spill/water fixtures, 300 independent minimax comparisons, exact runoff conservation and acyclic outlet ownership, and a 1024² synthetic raster. This does not yet compare a production cascade to a global oracle.
 - CHANNEL: exact shared-face ownership and inherited finer-edge containment, independent integer distance reference, crop/zoom/shuffle/eviction/concurrency tests, and zero-pixel-difference stitching of independently generated tiles. Emits actual code-rendered visual diagnostics.
+- REFINE: 600 exhaustive four-child path/budget comparisons, inherited/cross-parent ownership, deterministic rainfall splitting, input order/concurrency tests, composed-subdivision smoke test, overflow rejection, and eight exact JSON baselines. Emits six code-rendered diagnostic images.
 - LINT: state/dependency guards, cross-subsystem imports, numeric allowlists, and an integer-only topology source check. These are guardrails, not a formal whole-program purity proof. Future hydrology must extend them.
 - HTTP: assets, field metadata, inspection, image composition against direct core output, and malformed request rejection.
 - BUD: all current fields, p95 cold ≤25 ms/chunk, p95 cached ≤1 ms/chunk, and median of five 512² renders <1 s after JVM warmup for both macro elevation alone and elevation with guides/ports. Results and environment are recorded in `build/budget.json`. This excludes browser painting, PNG transport, and future terrain fields.
@@ -82,4 +85,4 @@ To intentionally change golden output, run `gallery`, inspect the candidate PNGs
 
 ## Next
 
-Construct infinite-plane root/terminal commitments, then implement one conditioned refinement level using shared ports and exact flux ownership. Complete global water connectivity and replace bounded local distance searches with the coarse-to-fine cascade described in the [roadmap review](docs/Roadmap-Review.md). The unavailable JS prototype is not a prerequisite. The longer concept notes are reviewed, including the fourth sedimentary-basin scenario. Preserve this repository and its `origin`; eventual mod scaffolding belongs under `mc-adapter/` using the official GTNH starter.
+Construct coherent continental domains and infinite-plane root/terminal commitments, then connect the tested local refinement kernel to that hierarchy. The landmass target is continental structure, not standard noise with extra layers. Complete global water connectivity and replace bounded local distance searches with the coarse-to-fine cascade described in the [roadmap review](docs/Roadmap-Review.md). The unavailable JS prototype is not a prerequisite. The longer concept notes are reviewed, including the fourth sedimentary-basin scenario. Preserve this repository and its `origin`; eventual mod scaffolding belongs under `mc-adapter/` using the official GTNH starter.

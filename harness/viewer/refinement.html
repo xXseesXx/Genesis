@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Genesis · Conditioned refinement</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/refinement.css"></head>
+<body>
+<header><div class="brand"><span class="mark">G</span><div><h1>GENESIS</h1><p>Conditioned drainage laboratory</p></div></div><span class="badge">ONE REFINEMENT STEP</span><a href="/">Main world viewer</a></header>
+<section class="workspace refinement-workspace">
+  <div class="toolbar"><div><span class="eyebrow">INHERITED PORTS / EXACT BUDGETS</span><h2>Two parents. Eight children.</h2></div><div class="actions"><button id="run">Refine parents</button><button id="export" disabled>Export JSON</button><button id="png" disabled>Export PNG</button></div></div>
+  <p class="layer-legend">This is an explicit eastward A → B boundary-contract example, not a viewport-derived river solution. B is evaluated before A using its committed incoming budget. Costs are synthetic integer fixtures, not terrain height or continental structure.</p>
+  <section class="refinement-inputs" aria-label="Refinement contract">
+    <label>Seed<input id="seed" value="42" inputmode="numeric"></label>
+    <label>World x (selects parent A)<input id="x" value="-8192" inputmode="numeric"></label>
+    <label>World z (selects parent A)<input id="z" value="-8192" inputmode="numeric"></label>
+    <label>Parent level (1–20)<input id="level" value="1" type="number" min="1" max="20" step="1"></label>
+    <label>Base cell spacing<input id="coarseSpacing" value="4096" type="number" min="1024" max="16384" step="1"></label>
+    <label>Local runoff per parent<input id="rain" value="11" inputmode="numeric"></label>
+    <label>External inflow to A<input id="inflow" value="100" inputmode="numeric"></label>
+  </section>
+  <section class="layer-bar" aria-label="Refinement diagnostic layers"><div class="layer-heading"><span class="eyebrow">DIAGNOSTIC LAYERS</span><span>All fields below describe the explicit contract, not new world fields.</span></div><div id="layers"></div></section>
+  <p id="legend" class="layer-legend"></p><div id="error" role="alert" hidden></div>
+  <figure><figcaption><span id="snapshot">No result yet</span><span class="map-state" id="status" aria-live="polite">Ready</span></figcaption><img id="diagram" width="1008" height="624" alt="Code-rendered child routing with inherited ports and exact flow budgets" hidden></figure>
+  <p id="budget" class="budget" aria-live="polite">Run the refinement to inspect its budget.</p>
+  <section class="refinement-readout"><h2>Exact child ledger</h2><p class="layer-legend">Child order: 0 northwest, 1 northeast, 2 southwest, 3 southeast. “Parent exit” means the inherited crossing, not an ocean mouth.</p><div class="table-scroll"><table><thead><tr><th>Child</th><th>Local runoff</th><th>External inflow</th><th>Outflow</th><th>Resistance</th><th>Distance</th><th>Downstream</th><th>Exit x, z</th></tr></thead><tbody id="ledger"></tbody></table></div></section>
+  <footer><span id="version">refinement-v1</span><span>Canonical parent identity · exact inherited ports · no global basin claim</span></footer>
+</section><script src="/refinement.js"></script>
+</body></html>

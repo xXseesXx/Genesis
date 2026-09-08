@@ -10,7 +10,7 @@ import genesis.core.hydro.CoarseChannels;
 
 /** Composition root: only here may concrete field implementations be wired together. */
 public strictfp final class Generator {
-    public static final String VERSION = "genesis-m3a-v1";
+    public static final String VERSION = "genesis-m3a-v2";
     public final long seed;
     public final Params params;
     public final FieldRegistry fields;

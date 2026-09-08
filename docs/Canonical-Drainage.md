@@ -12,7 +12,7 @@ The finite `/hydrology.html` tool is intentionally a different experiment. Its e
 
 `BoundaryPorts` identifies a face by the exact tuple `(level, axis, i, j)`. Vertical faces lie at `x = i * spacing`, horizontal faces at `z = j * spacing`. North/east/south/west views from adjacent cells resolve to the same tuple. A hash is used for placement, never as a supposedly collision-free identity.
 
-At level L, spacing is `coarseSpacing * 2^L`. Levels 0..20 are supported for this geometry primitive. This maximum does **not** declare hierarchy roots, cap river length, or prove eventual drainage. A port is placed within the face's central half, using an odd integer offset. The central-half restriction is a structural corner-exclusion bound, not a terrain tuning knob; all base spacings are multiples of 1024.
+At level L, spacing is `coarseSpacing * 2^L`. Levels 0..20 are supported for this geometry primitive. This maximum does **not** declare hierarchy roots, cap river length, or prove eventual drainage. A port is placed within the face's central half using a two-block stride (odd offsets for standard slider-step spacings); v2 additionally skips any offset divisible by the finest base spacing, covering arbitrary custom spacings too. The central-half restriction is a structural corner-exclusion bound, not a terrain tuning knob.
 
 An inherited coarse port lies in exactly one finer face. `childFace(port, finerLevel)` locates that face without changing the port's original identity or coordinates. Callers must carry the original commitment: **hashing the child face independently creates another port and is not refinement**. This supplies a stable crossing primitive, not the entire child-routing algorithm or permission to open other parent-boundary crossings.
 
@@ -29,7 +29,7 @@ The fixed 3×3 world-cell halo is sufficient for these capped distances: a farth
 
 Memoization retains at most 512 immutable cell descriptions per generator. Crossings are returned defensively; synchronized access and eviction do not alter values. Shared-edge ownership, central-half support, cache sizes, and direction codes are documented algorithm/infrastructure constants in the lint allowlist. No new terrain tuning parameter is introduced.
 
-The version is `genesis-m3a-v1`. The previous 18 fields retain their exact values and all 144 previous PNG baselines. Sixteen new reference images cover the two geometry fields across eight seeds. Their geometry lives in the Java 8 core and has no dependency on the finite reference, browser, or Minecraft.
+The initial version was `genesis-m3a-v1`; `genesis-m3a-v2` fixes child-corner exclusion for arbitrary custom spacings. All 160 default field PNG baselines are unchanged. The geometry lives in the Java 8 core and has no dependency on the finite reference, browser, or Minecraft. A separate [conditioned-refinement kernel](Conditioned-Refinement.md) now consumes inherited ports and budgets without claiming global root generation.
 
 ## Deliberate limitations
 
