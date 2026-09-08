@@ -80,6 +80,9 @@ public final class Renderer {
     public static int color(FieldId<?> field, double value) {
         if (field == Fields.SEA_MASK || field == Fields.CONTINENT_SEA_MASK) return value == 1 ? 0x245b78 : 0xa8b879;
         if (field == Fields.CONTINENT_SCAFFOLD) return value <= 0 ? blend(0x0a263e, 0x5299a7, 1 + value / 1000) : blend(0xa8b879, 0x526d45, value / 1000);
+        if (field == Fields.TERRAIN_DETAIL || field == Fields.TECTONIC_RELIEF)
+            return blend(0x13262a, field == Fields.TERRAIN_DETAIL ? 0xe0c798 : 0xe79c6f,
+                Math.sqrt(Math.max(0, Math.min(1, value / field.displayMax))));
         if (field == Fields.SEA_DISTANCE || field == Fields.DRAINAGE_RANK || field == Fields.FLOW_DIRECTION) {
             if (value < 0) return 0xc261a3;
             if (field == Fields.FLOW_DIRECTION) return new int[] {0x245b78, 0xdbba79, 0xb6d898, 0x8cacde, 0xe28b77}[(int) value];

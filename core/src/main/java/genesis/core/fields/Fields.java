@@ -2,6 +2,8 @@ package genesis.core.fields;
 
 public final class Fields {
     private Fields() {}
+    public static final FieldId<Double> TERRAIN_DETAIL = new FieldId<Double>("terrainDetail", "Terrain detail height", "model metres; coast-tapered ridge contribution", Double.class, 0, 4000);
+    public static final FieldId<Double> TECTONIC_RELIEF = new FieldId<Double>("tectonicRelief", "Tectonic relief height", "model metres; coast-tapered uplift contribution", Double.class, 0, 4000);
     public static final FieldId<Integer> CONTINENT_SCAFFOLD = new FieldId<Integer>("continentScaffold", "Continental scaffold (candidate)", "signed macro-object score; not elevation", Integer.class, -1000, 1000);
     public static final FieldId<Integer> CONTINENT_SEA_MASK = new FieldId<Integer>("continentSeaMask", "Continental land / sea (candidate)", "0 land / 1 sea; independent of current drainage", Integer.class, 0, 1);
     public static final FieldId<Double> NOISE = new FieldId<Double>("noise", "Reference fBm", "normalized", Double.class, -1, 1);

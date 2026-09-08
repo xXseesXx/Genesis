@@ -39,13 +39,14 @@ public final class Gates {
     private Gates() {}
 
     public static void main(String[] args) throws Exception {
-        if (args.length > 0 && args[0].equals("gallery")) { golden(true); RefinementGates.golden(true); RefinementDemo.writeDiagnostics(); ContinentalGates.main(args); return; }
+        if (args.length > 0 && args[0].equals("gallery")) { golden(true); RefinementGates.golden(true); RefinementDemo.writeDiagnostics(); ContinentalGates.main(args); ContinentalWorldGates.main(args); return; }
         long start = System.nanoTime();
         contracts();
         avalanche();
         TectonicGates.run();
         CoastGates.run();
         ContinentalGates.run();
+        ContinentalWorldGates.run();
         HydrologyGates.run();
         ChannelGates.run();
         RefinementGates.run();
@@ -267,7 +268,7 @@ public final class Gates {
     private static void http() throws Exception {
         try (Server.Running server = Server.start(0); HttpClient client = HttpClient.newHttpClient()) {
             String base = "http://127.0.0.1:" + server.port();
-            for (String path : List.of("/", "/style.css", "/app.js", "/hydrology.html", "/hydrology.js", "/hydrology.css", "/refinement.html", "/refinement.js", "/refinement.css", "/api/meta", "/api/sample?seed=-9223372036854775808&x=-1&z=16")) {
+            for (String path : List.of("/", "/continents.html", "/style.css", "/app.js", "/hydrology.html", "/hydrology.js", "/hydrology.css", "/refinement.html", "/refinement.js", "/refinement.css", "/api/meta", "/api/meta?model=continental", "/api/sample?seed=-9223372036854775808&x=-1&z=16")) {
                 var response = client.send(HttpRequest.newBuilder(URI.create(base + path)).build(), HttpResponse.BodyHandlers.ofString());
                 check(response.statusCode() == 200 && !response.body().isEmpty(), "HTTP GET " + path);
             }
@@ -281,6 +282,20 @@ public final class Gates {
             BufferedImage expected = Renderer.render(new Generator(42, Params.defaults()), new Renderer.Layer[] {
                 new Renderer.Layer(Fields.NOISE, 1), new Renderer.Layer(Fields.RIDGES, .25)}, -32, -32, 8, 32, 32).image();
             check(pixels(actual).equals(pixels(expected)), "HTTP composition differs from core render");
+            String continentalQuery = "model=continental&seed=42&x=-65536&z=-65536&width=32&height=32&step=4096&terrainDetailHeight=1500";
+            var continentalWorld = new Generator(42, new Params(Map.of("terrainDetailHeight",1500.0)), Generator.Model.CONTINENTAL);
+            var terrain = client.send(HttpRequest.newBuilder(URI.create(base + "/api/render?"+continentalQuery+"&layers=baseElevation:1,coarseChannelDistance:1,drainagePortDistance:1")).build(), HttpResponse.BodyHandlers.ofByteArray());
+            var terrainExpected = Renderer.render(continentalWorld,new Renderer.Layer[]{new Renderer.Layer(Fields.BASE_ELEVATION,1),new Renderer.Layer(Fields.CHANNEL_DISTANCE,1),new Renderer.Layer(Fields.PORT_DISTANCE,1)},-65536,-65536,4096,32,32).image();
+            check(terrain.statusCode()==200 && terrain.headers().firstValue("X-World-Model").orElse("").equals("continental") && pixels(ImageIO.read(new ByteArrayInputStream(terrain.body()))).equals(pixels(terrainExpected)),"HTTP continental render silently uses legacy model");
+            var terrainSample=client.send(HttpRequest.newBuilder(URI.create(base+"/api/sample?"+continentalQuery)).build(),HttpResponse.BodyHandlers.ofString());
+            check(terrainSample.statusCode()==200 && terrainSample.body().contains("\"model\":\"continental\"") && terrainSample.body().contains("\"baseElevation\":"+continentalWorld.fields.get(Fields.BASE_ELEVATION,-65536,-65536)),"HTTP continental inspector mismatch");
+            var continentalHydro=client.send(HttpRequest.newBuilder(URI.create(base+"/api/hydrology?"+continentalQuery+"&outlets=connectedWater")).build(),HttpResponse.BodyHandlers.ofString());
+            String continentalDirect=HydrologyAnalysis.json(continentalWorld,-65536,-65536,4096,32,32,"connectedWater");
+            check(continentalHydro.statusCode()==200 && continentalHydro.body().replaceAll("\"milliseconds\":[0-9.E+-]+","\"milliseconds\":0").equals(continentalDirect.replaceAll("\"milliseconds\":[0-9.E+-]+","\"milliseconds\":0")),"Finite analysis does not use continental terrain");
+            for(String endpoint:List.of("meta","render","sample","hydrology")) {
+                var invalid=client.send(HttpRequest.newBuilder(URI.create(base+"/api/"+endpoint+"?model=unknown")).build(),HttpResponse.BodyHandlers.ofString());
+                check(invalid.statusCode()==400,"Unknown world model accepted: "+endpoint);
+            }
             var continent = client.send(HttpRequest.newBuilder(URI.create(base + "/api/render?seed=42&x=-65536&z=-65536&width=32&height=32&step=4096&layers=continentSeaMask:1&continentCoverage=0")).build(), HttpResponse.BodyHandlers.ofByteArray());
             check(continent.statusCode() == 200, "HTTP candidate field unavailable");
             var candidateImage = ImageIO.read(new ByteArrayInputStream(continent.body()));
@@ -349,11 +364,19 @@ public final class Gates {
         for (int i = 0; i < continentFrames.length; i++) continentFrames[i] = Renderer.render(g,
             new Renderer.Layer[] {new Renderer.Layer(Fields.CONTINENT_SCAFFOLD, 1)}, -262144, -262144, 1024, 512, 512).nanos();
         double continentMedian = percentile(continentFrames, .5);
+        Generator continentalWorld = new Generator(42, Params.defaults(), Generator.Model.CONTINENTAL);
+        long[] terrainFrames = new long[5], terrainGuideFrames = new long[5];
+        for (int i = 0; i < terrainFrames.length; i++) {
+            terrainFrames[i] = Renderer.render(continentalWorld,new Renderer.Layer[]{new Renderer.Layer(Fields.BASE_ELEVATION,1)},-262144,-262144,1024,512,512).nanos();
+            terrainGuideFrames[i] = Renderer.render(continentalWorld,new Renderer.Layer[]{new Renderer.Layer(Fields.BASE_ELEVATION,1),new Renderer.Layer(Fields.CHANNEL_DISTANCE,1),new Renderer.Layer(Fields.PORT_DISTANCE,1)},-262144,-262144,1024,512,512).nanos();
+        }
+        double terrainMedian = percentile(terrainFrames,.5), terrainGuideMedian = percentile(terrainGuideFrames,.5);
         String report = String.format(java.util.Locale.ROOT,
-            "{\"version\":\"%s\",\"java\":\"%s\",\"os\":\"%s\",\"processors\":%d,\"chunkColdP95Ms\":%.4f,\"chunkWarmP95Ms\":%.4f,\"render512MedianMs\":%.2f,\"guideRender512MedianMs\":%.2f,\"continentRender512MedianMs\":%.2f}%n",
-            Generator.VERSION, System.getProperty("java.version"), System.getProperty("os.name"), Runtime.getRuntime().availableProcessors(), cold95, warm95, frameMedian, guideMedian, continentMedian);
+            "{\"version\":\"%s\",\"java\":\"%s\",\"os\":\"%s\",\"processors\":%d,\"chunkColdP95Ms\":%.4f,\"chunkWarmP95Ms\":%.4f,\"render512MedianMs\":%.2f,\"guideRender512MedianMs\":%.2f,\"continentRender512MedianMs\":%.2f,\"continentalTerrain512MedianMs\":%.2f,\"continentalGuides512MedianMs\":%.2f}%n",
+            Generator.VERSION, System.getProperty("java.version"), System.getProperty("os.name"), Runtime.getRuntime().availableProcessors(), cold95, warm95, frameMedian, guideMedian, continentMedian, terrainMedian, terrainGuideMedian);
         Files.writeString(Path.of("build/budget.json"), report);
-        check(cold95 <= 25 && warm95 <= 1 && frameMedian < 1000 && guideMedian < 1000 && continentMedian < 1000, "BUD over current thresholds: " + report);
+        check(cold95 <= 25 && warm95 <= 1 && frameMedian < 1000 && guideMedian < 1000 && continentMedian < 1000 && terrainMedian < 1000 && terrainGuideMedian < 1000, "BUD over current thresholds: " + report);
+        System.out.printf("PASS BUD continental terrain: 512-square %.1f ms; with guides/ports %.1f ms median%n",terrainMedian,terrainGuideMedian);
         System.out.printf("PASS BUD continental scaffold: 512-square %.1f ms median%n", continentMedian);
         System.out.printf("PASS BUD: all %d fields cold p95 %.3f ms/chunk, cached p95 %.3f ms/chunk; 512-square elevation %.1f ms, guides+ports %.1f ms median%n", g.fields.ids().size(), cold95, warm95, frameMedian, guideMedian);
     }

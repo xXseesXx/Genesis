@@ -2,6 +2,7 @@ package genesis.core.elevation;
 
 import genesis.core.Params;
 import genesis.core.fields.FieldRegistry;
+import genesis.core.fields.FieldId;
 import genesis.core.fields.Fields;
 import genesis.core.hash.Hash64;
 import genesis.core.hash.Lattice;
@@ -18,6 +19,7 @@ public final class CoastTopology {
     private final long seed;
     private final Params params;
     private final FieldRegistry inputs;
+    private final FieldId<Integer> source;
     private final Map<Key, Integer> scores = new LinkedHashMap<Key, Integer>(16, 1, true);
     private final Map<Key, Route> routes = new LinkedHashMap<Key, Route>(16, 1, true);
 
@@ -35,7 +37,12 @@ public final class CoastTopology {
         }
     }
     public CoastTopology(long seed, Params params, FieldRegistry inputs) {
+        this(seed, params, inputs, null);
+    }
+    /** Optional registered integer score replaces the legacy crust/noise coast recipe. */
+    public CoastTopology(long seed, Params params, FieldRegistry inputs, FieldId<Integer> source) {
         this.seed = Hash64.stream(seed, DOMAIN); this.params = params; this.inputs = inputs;
+        this.source = source;
         this.spacing = params.integer("coarseSpacing");
     }
     private static long bounded(long coordinate) { return Math.max(-Lattice.MAX_COORDINATE, Math.min(Lattice.MAX_COORDINATE, coordinate)); }
@@ -55,9 +62,13 @@ public final class CoastTopology {
         Integer cached = scores.get(key);
         if (cached != null) return cached;
         long x = Math.multiplyExact(i, spacing), z = Math.multiplyExact(j, spacing);
-        int crust = inputs.get(Fields.CRUST_FRACTION, bounded(x), bounded(z));
-        int influence = params.integer("crustInfluence");
-        int score = (crust * influence + variation(x, z) * (SCALE - influence)) / SCALE - params.integer("seaThreshold");
+        int score;
+        if (source != null) score = inputs.get(source, bounded(x), bounded(z));
+        else {
+            int crust = inputs.get(Fields.CRUST_FRACTION, bounded(x), bounded(z));
+            int influence = params.integer("crustInfluence");
+            score = (crust * influence + variation(x, z) * (SCALE - influence)) / SCALE - params.integer("seaThreshold");
+        }
         scores.put(key, score);
         if (scores.size() > VERTEX_CACHE) scores.remove(scores.keySet().iterator().next());
         return score;

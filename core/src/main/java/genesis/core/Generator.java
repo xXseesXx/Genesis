@@ -11,12 +11,23 @@ import genesis.core.hydro.CoarseChannels;
 
 /** Composition root: only here may concrete field implementations be wired together. */
 public strictfp final class Generator {
-    public static final String VERSION = "genesis-m3a-v3";
+    public static final String VERSION = "genesis-m3a-v4";
+    public enum Model {
+        LEGACY("legacy"), CONTINENTAL("continental");
+        public final String id;
+        Model(String id) { this.id = id; }
+    }
     public final long seed;
+    public final Model model;
     public final Params params;
     public final FieldRegistry fields;
 
     public Generator(long seed, Params params) {
+        this(seed, params, Model.LEGACY);
+    }
+    public Generator(long seed, Params params, Model model) {
+        if (model == null) throw new IllegalArgumentException("Missing world model");
+        this.model = model;
         this.seed = seed; this.params = params;
         final FieldRegistry base = new FieldRegistry.Builder().add(Fields.NOISE, new Noise(seed, params)).build();
         final Tectonics tectonics = new Tectonics(seed, params);
@@ -34,21 +45,25 @@ public strictfp final class Generator {
             .add(Fields.CRUST_AGE, (x, z) -> tectonics.sample(x, z).owner.age)
             .add(Fields.CRUST_FRACTION, tectonics::crustFraction)
             .build();
-        final CoastTopology coast = new CoastTopology(seed, params, tectonicFields);
-        final MacroElevation elevation = new MacroElevation(coast, params, tectonicFields);
-        final FieldRegistry coastFields = new FieldRegistry.Builder().include(tectonicFields)
+        final ContinentalScaffold continents = new ContinentalScaffold(seed, params);
+        final FieldRegistry coastInputs = new FieldRegistry.Builder().include(tectonicFields)
+            .add(Fields.CONTINENT_SCAFFOLD, continents::score).build();
+        final CoastTopology coast = new CoastTopology(seed, params, coastInputs,
+            model == Model.CONTINENTAL ? Fields.CONTINENT_SCAFFOLD : null);
+        final MacroElevation elevation = new MacroElevation(coast, params, coastInputs, model == Model.CONTINENTAL);
+        final FieldRegistry coastFields = new FieldRegistry.Builder().include(coastInputs)
             .add(Fields.CONTINENTALITY, elevation::continentality)
             .add(Fields.BASE_ELEVATION, elevation::elevation)
+            .add(Fields.TERRAIN_DETAIL, elevation::detail)
+            .add(Fields.TECTONIC_RELIEF, elevation::tectonicRelief)
             .add(Fields.SEA_MASK, (x, z) -> coast.numerator(x, z) <= 0 ? 1 : 0)
             .add(Fields.SEA_DISTANCE, (x, z) -> { int rank = coast.at(x, z).rank; return rank < 0 ? -1 : rank * coast.spacing; })
             .add(Fields.DRAINAGE_RANK, (x, z) -> coast.at(x, z).rank)
             .add(Fields.FLOW_DIRECTION, (x, z) -> coast.at(x, z).direction)
             .build();
         final CoarseChannels channels = new CoarseChannels(seed, params, coastFields);
-        final ContinentalScaffold continents = new ContinentalScaffold(seed, params);
         this.fields = new FieldRegistry.Builder().include(coastFields)
-            .add(Fields.CONTINENT_SCAFFOLD, continents::score)
-            .add(Fields.CONTINENT_SEA_MASK, (x, z) -> continents.score(x, z) <= 0 ? 1 : 0)
+            .add(Fields.CONTINENT_SEA_MASK, (x, z) -> model == Model.CONTINENTAL ? coastFields.get(Fields.SEA_MASK, x, z) : continents.score(x, z) <= 0 ? 1 : 0)
             .add(Fields.CHANNEL_DISTANCE, channels::channelDistance)
             .add(Fields.PORT_DISTANCE, channels::portDistance)
             .build();

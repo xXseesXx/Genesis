@@ -56,7 +56,7 @@ public final class Server {
         try {
             if (!exchange.getRequestMethod().equals("GET")) { send(exchange, 405, "text/plain", bytes("GET only")); return; }
             String path = exchange.getRequestURI().getPath();
-            if (path.equals("/api/meta")) { send(exchange, 200, "application/json", bytes(metadata())); return; }
+            if (path.equals("/api/meta")) { send(exchange, 200, "application/json", bytes(metadata(model(query(exchange.getRequestURI().getRawQuery(), false))))); return; }
             if (path.startsWith("/api/")) {
                 boolean refinement = path.equals("/api/refinement") || path.equals("/api/refinement.png");
                 Map<String, String> query = query(exchange.getRequestURI().getRawQuery(), refinement);
@@ -80,7 +80,7 @@ public final class Server {
                     send(exchange, 200, "application/json", bytes(result)); return;
                 }
                 if (path.equals("/api/sample")) {
-                    StringBuilder result = new StringBuilder("{\"x\":\"").append(x).append("\",\"z\":\"").append(z).append("\",\"fields\":{");
+                    StringBuilder result = new StringBuilder("{\"model\":").append(quote(generator.model.id)).append(",\"x\":\"").append(x).append("\",\"z\":\"").append(z).append("\",\"fields\":{");
                     for (FieldId<?> id : generator.fields.ids()) {
                         if (result.charAt(result.length() - 1) != '{') result.append(',');
                         Object value = generator.fields.get(id, x, z);
@@ -102,6 +102,7 @@ public final class Server {
                     ByteArrayOutputStream out = new ByteArrayOutputStream();
                     ImageIO.write(render.image(), "png", out);
                     exchange.getResponseHeaders().set("X-Render-Ms", Double.toString(render.nanos() / 1e6));
+                    exchange.getResponseHeaders().set("X-World-Model", generator.model.id);
                     exchange.getResponseHeaders().set("X-Field-Min", Double.toString(render.min()));
                     exchange.getResponseHeaders().set("X-Field-Max", Double.toString(render.max()));
                     exchange.getResponseHeaders().set("X-Field-Mean", Double.toString(render.mean()));
@@ -111,6 +112,7 @@ public final class Server {
                 send(exchange, 404, "text/plain", bytes("Unknown endpoint")); return;
             }
             String file = switch (path) { case "/" -> "index.html"; case "/app.js" -> "app.js"; case "/style.css" -> "style.css";
+                case "/continents.html" -> "continents.html";
                 case "/hydrology.html" -> "hydrology.html"; case "/hydrology.js" -> "hydrology.js"; case "/hydrology.css" -> "hydrology.css";
                 case "/refinement.html" -> "refinement.html"; case "/refinement.js" -> "refinement.js"; case "/refinement.css" -> "refinement.css"; default -> null; };
             if (file == null) { send(exchange, 404, "text/plain", bytes("Not found")); return; }
@@ -141,7 +143,7 @@ public final class Server {
             if (result.put(key, value) != null) throw new IllegalArgumentException("Duplicate query key: " + key);
         }
         for (String key : result.keySet())
-            if (!List.of("seed", "x", "z", "width", "height", "step", "layers", "outlets").contains(key) && !Params.SPECS.containsKey(key)
+            if (!List.of("seed", "model", "x", "z", "width", "height", "step", "layers", "outlets").contains(key) && !Params.SPECS.containsKey(key)
                 && !(refinement && List.of("level", "rain", "inflow", "layer").contains(key)))
                 throw new IllegalArgumentException("Unknown query key: " + key);
         return result;
@@ -149,13 +151,20 @@ public final class Server {
     private static Generator generator(Map<String, String> query) {
         Map<String, Double> overrides = new LinkedHashMap<>();
         for (String key : Params.SPECS.keySet()) if (query.containsKey(key)) overrides.put(key, Double.parseDouble(query.get(key)));
-        return new Generator(number(query, "seed", 42), new Params(overrides));
+        return new Generator(number(query, "seed", 42), new Params(overrides), model(query));
+    }
+    private static Generator.Model model(Map<String, String> query) {
+        return switch (query.getOrDefault("model", "legacy")) {
+            case "legacy" -> Generator.Model.LEGACY;
+            case "continental" -> Generator.Model.CONTINENTAL;
+            default -> throw new IllegalArgumentException("model must be legacy or continental");
+        };
     }
     private static long number(Map<String, String> query, String key, long fallback) {
         return Long.parseLong(query.getOrDefault(key, Long.toString(fallback)));
     }
-    private static String metadata() {
-        StringBuilder result = new StringBuilder("{\"version\":").append(quote(Generator.VERSION)).append(",\"params\":[");
+    private static String metadata(Generator.Model model) {
+        StringBuilder result = new StringBuilder("{\"version\":").append(quote(Generator.VERSION)).append(",\"model\":").append(quote(model.id)).append(",\"params\":[");
         boolean comma = false;
         for (Params.Spec spec : Params.SPECS.values()) {
             if (comma) result.append(','); comma = true;
@@ -164,7 +173,7 @@ public final class Server {
                 .append(",\"max\":").append(spec.max).append(",\"step\":").append(spec.step).append('}');
         }
         result.append("],\"fields\":["); comma = false;
-        for (FieldId<?> id : new Generator(0, Params.defaults()).fields.ids()) {
+        for (FieldId<?> id : new Generator(0, Params.defaults(), model).fields.ids()) {
             if (comma) result.append(','); comma = true;
             result.append("{\"id\":").append(quote(id.name)).append(",\"label\":").append(quote(id.label))
                 .append(",\"type\":").append(quote(id.type.getSimpleName())).append(",\"units\":").append(quote(id.units))

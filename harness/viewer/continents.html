@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Genesis · Continental terrain</title><link rel="stylesheet" href="/style.css"></head>
+<body data-world="continental">
+<header><div class="brand"><span class="mark">G</span><div><h1>GENESIS</h1><p>Continental terrain laboratory</p></div></div><span class="badge">CONTINENTS / CONNECTED FIELDS</span><span id="connection">Connecting to core…</span></header>
+<main>
+<aside>
+  <div class="section-title">01 <h2>Continental world</h2></div>
+  <label for="seedA">Seed A <span>signed 64-bit integer</span></label><input id="seedA" value="42" inputmode="numeric" spellcheck="false">
+  <label class="check"><input type="checkbox" id="compare"> Compare two continental worlds</label>
+  <div id="compareOptions" hidden><label for="seedB">Seed B</label><input id="seedB" value="137" inputmode="numeric"><label for="paramsB">B parameter overrides <span>JSON; other values follow A</span></label><textarea id="paramsB" rows="3" spellcheck="false">{}</textarea></div>
+  <div class="section-title">02 <h2>Continents and relief</h2><button id="resetParams" class="text-button">Reset</button></div><div id="params"></div>
+  <div class="note"><b>One coast drives this whole view.</b><p>Land/sea, elevation, sea-distance ranks, route guides and ports all use continental coast commitments. Tectonic relief and ridged detail add actual height without moving the shoreline.</p><p>Plate and crust layers are upstream diagnostics, not continental land masks. The legacy seaThreshold and crustInfluence controls do not apply here.</p></div>
+</aside>
+<section class="workspace">
+  <nav class="experiment-nav"><a href="/">← Original field laboratory</a><span>Separate world model · original terrain remains unchanged</span></nav>
+  <p class="layer-legend">World-coordinate terrain, never canvas-defined generation. Pink drainage interiors remain unresolved by the bounded sea search. Cyan guides are not carved rivers or globally proven ocean routes.</p>
+  <nav class="experiment-nav"><a id="hydrologyLink" href="/hydrology.html?model=continental">Analyze this continental terrain →</a><span>Finite filling, catchments and runoff · uses this model and configuration</span></nav>
+  <nav class="experiment-nav"><a id="refinementLink" href="/refinement.html">Conditioned refinement fixture →</a><span>Separate synthetic routing example, not a continental river simulation</span></nav>
+  <div class="toolbar"><div><span class="eyebrow">CONTINENTAL FIELD EXPLORER</span><h2 id="fieldTitle">Continental terrain</h2></div><div class="actions"><button id="continentsOverview">Overview</button><button id="home">Origin</button><button id="zoomOut" aria-label="Zoom out">−</button><button id="zoomIn" aria-label="Zoom in">+</button><button id="export">Export PNG + config</button></div></div>
+  <section class="layer-bar" aria-label="Continental field layers"><div class="layer-heading"><span class="eyebrow">CONNECTED FIELD LAYERS</span><span>View selects one layer · checkboxes combine layers left to right</span></div><div id="layers"></div></section>
+  <div id="layerLegend" class="layer-legend" aria-live="polite"></div>
+  <div class="map-grid" id="maps">
+    <figure><figcaption><span class="world-tag">A</span> <span id="captionA">Seed 42</span><span class="map-state">CONTINENTAL WORLD</span></figcaption><canvas id="mapA" width="512" height="512" aria-label="Continental world A terrain; drag to pan, scroll to zoom, click to inspect"></canvas><div class="map-footer"><span id="regime">Continental</span><span id="scale">1024 blocks / pixel</span></div></figure>
+    <figure id="figureB" hidden><figcaption><span class="world-tag">B</span> <span id="captionB">Seed 137</span><span class="map-state">SAME WORLD MODEL</span></figcaption><canvas id="mapB" width="512" height="512" aria-label="Continental world B terrain"></canvas><div class="map-footer"><span>Shared coordinates</span><span>Independent seed + overrides</span></div></figure>
+  </div>
+  <div class="map-info"><span id="coords">x 0 · z 0</span><span>Drag to pan · Scroll to zoom · Click to inspect</span></div>
+  <div id="error" role="alert" hidden></div>
+  <section class="readouts"><div><span class="eyebrow">RENDER / CORE</span><strong id="timing">—</strong><p id="range">Waiting for continental terrain</p></div><div><span class="eyebrow">COLUMN INSPECTOR</span><strong id="inspectCoords">Select a location</strong><dl id="inspection"><dt>All fields use model=continental</dt></dl></div><div><span class="eyebrow">HEIGHT COMPOSITION</span><strong>Land base + uplift + ridges</strong><p>The detail and tectonic-relief layers are height contributions to the rendered surface. Change wavelength for detail scale; terrainDetailHeight controls its strength. Coarse coast interpolation is fixed in world space, not tied to zoom.</p></div></section>
+  <footer><span id="version">Continental world model</span><span>Standalone core · No Minecraft integration</span></footer>
+</section>
+</main><script src="/app.js"></script>
+</body></html>

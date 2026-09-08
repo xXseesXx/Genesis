@@ -1,6 +1,9 @@
 'use strict';
 const $ = id => document.getElementById(id);
+const isContinental=document.body.dataset.world==='continental';
+const worldModel=isContinental?'continental':'legacy';
 const state = {x:-65536,z:-65536,step:256,params:{},layers:[],revision:0,completeRevision:-1,controller:null,timer:null,images:{},requests:{}};
+if(isContinental){state.x=state.z=-262144;state.step=1024;}
 let meta;
 const error = message => { $('error').textContent=message; $('error').hidden=!message; };
 function config(side) {
@@ -17,7 +20,7 @@ function config(side) {
     }
     params={...params,...overrides};
   }
-  return {seed,...params};
+  return {seed,...params,model:worldModel};
 }
 function request(side) {
   const layers=state.layers.filter(l=>l.enabled).map(l=>l.id+':'+l.opacity).join(',');
@@ -41,6 +44,7 @@ async function render() {
     const results=await Promise.all(sides.map(async side=>{
       const response=await fetch('/api/render?'+queries[side],{signal});
       if(!response.ok) throw new Error((await response.json()).error);
+      if(response.headers.get('X-World-Model')!==worldModel)throw new Error('World model mismatch; refresh the viewer.');
       const blob=await response.blob();
       const bitmap=await createImageBitmap(blob);
       return {side,bitmap,blob,ms:Number(response.headers.get('X-Render-Ms')),min:Number(response.headers.get('X-Field-Min')),max:Number(response.headers.get('X-Field-Max')),land:Number(response.headers.get('X-Land-Fraction')??NaN)};
@@ -68,7 +72,7 @@ function point(event,canvas) {
   return {px:Math.max(0,Math.min(511,Math.floor((event.clientX-rect.left)/rect.width*512))),pz:Math.max(0,Math.min(511,Math.floor((event.clientY-rect.top)/rect.height*512)))};
 }
 function zoom(direction,px=256,pz=256) {
-  const next=Math.max(1,Math.min(1048576,direction>0?state.step/2:state.step*2));
+  const next=Math.max(1,Math.min(1048576,Math.round(direction>0?state.step/2:state.step*2)));
   state.x+=px*(state.step-next); state.z+=pz*(state.step-next); state.step=next; schedule();
 }
 let inspectionRevision=0;
@@ -107,7 +111,7 @@ for(const side of ['A','B']) {
 function download(blob,name) {const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 $('export').onclick=()=>{if(state.images.A){download(state.images.A,'genesis-A.png');download(new Blob([JSON.stringify({version:meta.version,query:state.requests.A},null,2)],{type:'application/json'}),'genesis-A.json');if($('compare').checked&&state.images.B){download(state.images.B,'genesis-B.png');download(new Blob([JSON.stringify({version:meta.version,query:state.requests.B},null,2)],{type:'application/json'}),'genesis-B.json');}}};
 $('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);
-$('continentsOverview').onclick=()=>{if(!meta)return;state.step=Math.max(1,Math.ceil(state.params.continentScale/64));state.x=-256*state.step;state.z=-256*state.step;for(const layer of state.layers){layer.enabled=layer.id==='continentSeaMask';layer.opacity=1;}syncLayers();schedule();};
+$('continentsOverview').onclick=event=>{if(!meta)return;if(!isContinental){try{const {model,...inputs}=config('A');$('continentsOverview').href='/continents.html?'+new URLSearchParams(inputs);}catch(e){event.preventDefault();error(e.message);}return;}state.step=Math.max(1,Math.ceil(state.params.continentScale/64));state.x=-256*state.step;state.z=-256*state.step;for(const layer of state.layers){layer.enabled=layer.id==='baseElevation';layer.opacity=1;}syncLayers();schedule();};
 $('hydrologyLink').onclick=event=>{try{$('hydrologyLink').href='/hydrology.html?'+new URLSearchParams({...config('A'),x:state.x,z:state.z,step:Math.min(1048576,state.step*4)});}catch(e){event.preventDefault();error(e.message);}};
 $('refinementLink').onclick=event=>{try{const a=config('A');$('refinementLink').href='/refinement.html?'+new URLSearchParams({seed:a.seed,x:state.x,z:state.z,coarseSpacing:a.coarseSpacing});}catch(e){event.preventDefault();error(e.message);}};
 $('home').onclick=()=>{state.x=-256*state.step;state.z=-256*state.step;schedule();};
@@ -115,7 +119,9 @@ $('compare').onchange=()=>{$('figureB').hidden=!$('compare').checked;$('compareO
 for(const id of ['seedA','seedB','paramsB'])$(id).addEventListener('input',schedule);
 function makeParams() {
   $('params').replaceChildren();
-  for(const spec of meta.params){
+  const primary=['continentScale','continentCoverage','continentLobeRadius','continentLobeVariation','continentArmStep','landHeight','mountainHeight','terrainDetailHeight','wavelength','oceanDepth','coarseSpacing','seaSearchRadius'];
+  const specs=isContinental?[...primary.map(id=>meta.params.find(p=>p.id===id)),...meta.params.filter(p=>!primary.includes(p.id)&&!['crustInfluence','seaThreshold'].includes(p.id))]:meta.params.filter(p=>!['continentCoverage','continentLobeRadius','continentLobeVariation','continentArmStep','terrainDetailHeight'].includes(p.id));
+  for(const spec of specs){
     const label=document.createElement('label'),value=document.createElement('span'),input=document.createElement('input');
     label.htmlFor='param-'+spec.id;label.textContent=spec.id;value.textContent=state.params[spec.id];label.append(value);
     input.id=label.htmlFor;input.type='range';input.min=spec.min;input.max=spec.max;input.step=spec.step;input.value=state.params[spec.id];input.title=spec.description;
@@ -127,9 +133,15 @@ function makeParams() {
 }
 $('resetParams').onclick=()=>{for(const spec of meta.params)state.params[spec.id]=spec.default;makeParams();schedule();};
 async function init(){
-  const response=await fetch('/api/meta');if(!response.ok)throw new Error('Could not load core metadata.');meta=await response.json();$('version').textContent=meta.version;
-  for(const spec of meta.params)state.params[spec.id]=spec.default;makeParams();
-  const macro=['continentScaffold','continentSeaMask','baseElevation','coarseChannelDistance','drainagePortDistance','seaMask','continentality','coarseSeaDistance','coarseDrainageRank','coarseFlowDirection'];
+  const response=await fetch('/api/meta?model='+worldModel);if(!response.ok)throw new Error('Could not load core metadata.');meta=await response.json();if(meta.model!==worldModel)throw new Error('Wrong world metadata.');$('version').textContent=meta.version+' / '+worldModel;
+  const query=new URLSearchParams(location.search);
+  for(const spec of meta.params)state.params[spec.id]=query.has(spec.id)?Number(query.get(spec.id)):spec.default;
+  if(query.has('seed'))$('seedA').value=query.get('seed');
+  for(const id of ['x','z','step'])if(query.has(id)){const value=Number(query.get(id));if(!Number.isSafeInteger(value)||(id==='step'&&(value<1||value>1048576)))throw new Error('Invalid '+id+' in URL.');state[id]=value;}
+  makeParams();
+  meta.fields=meta.fields.filter(f=>isContinental?f.id!=='continentSeaMask':!['continentScaffold','continentSeaMask','terrainDetail'].includes(f.id));
+  if(isContinental)for(const f of meta.fields){if(f.id==='baseElevation')f.label='Continental terrain';if(f.id==='continentScaffold')f.label='Raw landmass support';if(f.id==='continentality')f.label='Committed continentality';}
+  const macro=['baseElevation','coarseChannelDistance','drainagePortDistance','seaMask','continentality','tectonicRelief',...(isContinental?['terrainDetail']:[]),'coarseSeaDistance','coarseDrainageRank','coarseFlowDirection'];
   const fields=[...macro.map(id=>meta.fields.find(f=>f.id===id)).filter(Boolean),...meta.fields.filter(f=>!macro.includes(f.id)&&!['noise','ridges','boundaryType'].includes(f.id)),...meta.fields.filter(f=>['noise','ridges'].includes(f.id)),...meta.fields.filter(f=>f.id==='boundaryType')];
   for(const field of fields){
     const layer={id:field.id,enabled:field.id==='baseElevation',opacity:1};state.layers.push(layer);
@@ -147,7 +159,9 @@ function syncLayers(){for(const layer of state.layers){layer.elements.check.chec
 function showLegend(){
   const descriptions=state.layers.filter(l=>l.enabled).map(layer=>{
     const f=meta.fields.find(f=>f.id===layer.id);
-    if(f.id==='continentScaffold'||f.id==='continentSeaMask')return `${f.label}: connected macro lobes; blue water / green land. Controls: continentScale, Coverage, LobeRadius, LobeVariation, ArmStep. Try zooming out twice. Candidate only: existing elevation and rivers use the old coast.`;
+    if(f.id==='continentScaffold')return `${f.label}: integer macro-object support BEFORE coarse coastline interpolation. Use Land / sea for the committed coast used by terrain and drainage.`;
+    if(f.id==='terrainDetail')return `${f.label}: actual ridged height added to continental land; zero in water, tapered at coasts. Strength: terrainDetailHeight; scale: wavelength.`;
+    if(f.id==='tectonicRelief')return `${f.label}: actual coast-tapered height contribution from positive tectonic uplift, controlled by mountainHeight.`;
     if(f.id==='coarseChannelDistance')return `${f.label}: cyan world-coordinate guides; unresolved coarse routes stay absent. No flux, carving, or globally proven ocean mouths yet.`;
     if(f.id==='drainagePortDistance')return `${f.label}: gold shared-edge crossings; identical from either cell and independent of the viewport.`;
     const details=f.type==='Long'?'colors distinguish exact identities':f.id==='baseElevation'?'blue: below sea · green to pale: higher land · display hillshade':f.id==='seaMask'?'blue: sea-level terminal · green: land (global connectivity pending)':f.id==='coarseFlowDirection'?'pink: unresolved · blue: sea · gold: N · green: E · pale blue: S · coral: W':f.id.startsWith('coarse')?`${f.units} · pink: unresolved · values refer to the coarse anchor`:f.id==='boundaryType'?'blue: divergent · gold: transform · orange: convergent':f.id==='crustType'?'blue: oceanic · green: continental':f.id==='uplift'?'blue: extension · dark: neutral · orange: compression':`${f.min} → ${f.max} ${f.units} (display range)`;

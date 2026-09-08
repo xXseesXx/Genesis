@@ -46,6 +46,7 @@ public final class Params {
         add(specs, new Spec("landHeight", 2200, 100, 6000, 100, true, "Continental elevation scale in model meters"));
         add(specs, new Spec("oceanDepth", 4200, 100, 10000, 100, true, "Bathymetry scale in model meters"));
         add(specs, new Spec("mountainHeight", 2600, 0, 8000, 100, true, "Uplift contribution, tapered to zero at committed coasts"));
+        add(specs, new Spec("terrainDetailHeight", 900, 0, 4000, 50, true, "Continental mode only: ridged relief in model metres; coast-tapered, wavelength controls its scale"));
         add(specs, new Spec("seaSearchRadius", 12, 1, 32, 1, true, "Maximum coarse Manhattan search radius; unresolved stays explicit"));
         SPECS = Collections.unmodifiableMap(specs);
     }

@@ -54,6 +54,7 @@ public final class HydrologyAnalysis {
         }
         windows.append(']');
         return "{\"version\":\"" + FiniteHydrology.VERSION + "\",\"generatorVersion\":\"" + Generator.VERSION
+            + "\",\"model\":\"" + generator.model.id
             + "\",\"boundary\":\"" + (boundary == FiniteHydrology.Boundary.OPEN_EDGES ? "all-edge-cells" : "connected-water-cells")
             + "\",\"connectivity\":8,\"heightUnit\":\"model millimetres\",\"x\":\"" + x
             + "\",\"z\":\"" + z + "\",\"step\":" + step + ",\"width\":" + width + ",\"height\":" + height

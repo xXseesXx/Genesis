@@ -24,7 +24,7 @@ function config(){
     if(!spec||typeof value!=='number'||!Number.isFinite(value))throw new Error('Invalid parameter: '+key);
   }
   const params=Object.fromEntries(metadata.params.map(p=>[p.id,p.default]));
-  const q={seed,...params,...overrides};
+  const q={seed,...params,...overrides,model:$('model').value};
   for(const id of ['x','z','step']){const raw=$(id).value;if(!/^-?\d+$/.test(raw)||!Number.isSafeInteger(Number(raw)))throw new Error(id+' must be an exact integer.');q[id]=raw;}
   q.width=q.height=Number($('size').value);q.outlets=$('outlets').value;return new URLSearchParams(q);
 }
@@ -36,8 +36,11 @@ async function run(){
     const result=await response.json();if(!response.ok)throw new Error(result.error);
     if(ticket!==revision)return;
     data=result;snapshot={query:query.toString(),...result};selected=-1;
+    const back=new URLSearchParams(query);for(const key of ['width','height','outlets'])back.delete(key);
+    $('worldLink').href=(data.model==='continental'?'/continents.html':'/')+'?'+back;
+    $('worldLink').textContent=data.model==='continental'?'Continental terrain':'Field explorer';
     $('inspection').textContent='Select a cell to inspect and trace.';
-    $('region').textContent=`Seed ${query.get('seed')} · ${data.width} × ${data.height} · x ${data.x}, z ${data.z} · step ${data.step} · ${data.boundary}`;
+    $('region').textContent=`${data.model} · Seed ${query.get('seed')} · ${data.width} × ${data.height} · x ${data.x}, z ${data.z} · step ${data.step} · ${data.boundary}`;
     $('status').textContent=`${data.milliseconds.toFixed(0)} ms · ${data.unresolvedLandCells?'unresolved drainage':'fixed region'}`;
     $('metrics').textContent=`${data.landCells.toLocaleString()} land cells → ${data.discharged.toLocaleString()} discharged + ${data.unresolvedLandCells.toLocaleString()} unresolved. Balance: ${data.landCells===data.discharged+data.unresolvedLandCells?'exact':'FAILED'}. ${data.terminalCount.toLocaleString()} terminals. ${data.edgeWaterCells.toLocaleString()} edge-connected water cells; ${data.enclosedWaterCells.toLocaleString()} enclosed water cells.`;
     $('version').textContent=data.version+' / '+data.generatorVersion;$('save').disabled=false;draw();
@@ -91,13 +94,14 @@ $('map').onclick=event=>{
   for(const [id,label] of fields){const value=data.fields[id][selected];let text=['elevation','filled','fillDepth'].includes(id)?(value/1000).toFixed(3)+' m':value;if(data.fields.status[selected]===0&&!['elevation','water','status'].includes(id))text='unresolved';lines.push(`${label}: ${text}`);}
   $('inspection').textContent=lines.join('\n');draw();
 };
-for(const id of ['seed','x','z','step','size','overrides','outlets'])$(id).addEventListener('input',()=>{revision++;controller?.abort();$('status').textContent='Configuration changed — click Analyze region';});
+for(const id of ['model','seed','x','z','step','size','overrides','outlets'])$(id).addEventListener('input',()=>{revision++;controller?.abort();$('status').textContent='Configuration changed — click Analyze region';});
 for(const id of ['rivers','threshold','audit'])$(id).addEventListener('input',draw);
 $('run').onclick=run;
 $('save').onclick=()=>{if(!snapshot)return;const url=URL.createObjectURL(new Blob([JSON.stringify(snapshot)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='genesis-hydrology.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
 async function init(){try{
   $('run').disabled=true;const response=await fetch('/api/meta');if(!response.ok)throw new Error('Cannot load generator metadata.');metadata=await response.json();
   const query=new URLSearchParams(location.search),overrides={};
+  if(query.has('model')){if(!['legacy','continental'].includes(query.get('model')))throw new Error('Unknown world model.');$('model').value=query.get('model');}
   for(const id of ['seed','x','z','step'])if(query.has(id))$(id).value=query.get(id);
   if(query.has('outlets')){if(!['edges','connectedWater'].includes(query.get('outlets')))throw new Error('Unknown outlet policy.');$('outlets').value=query.get('outlets');}
   for(const spec of metadata.params)if(query.has(spec.id))overrides[spec.id]=Number(query.get(spec.id));

@@ -2,11 +2,12 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Genesis · Hydrology reference</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/hydrology.css"></head>
 <body>
-<header><div class="brand"><span class="mark">G</span><div><h1>GENESIS</h1><p>Finite hydrology laboratory</p></div></div><span class="badge">REFERENCE / NOT WORLD FIELDS</span><a href="/">Field explorer</a></header>
+<header><div class="brand"><span class="mark">G</span><div><h1>GENESIS</h1><p>Finite hydrology laboratory</p></div></div><span class="badge">REFERENCE / NOT WORLD FIELDS</span><a id="worldLink" href="/">Field explorer</a></header>
 <section class="workspace hydro-workspace">
   <div class="toolbar"><div><span class="eyebrow">BOUNDED D8 EXPERIMENT</span><h2>Where does the water go?</h2></div><div class="actions"><button id="run">Analyze region</button><button id="save" disabled>Export analysis</button></div></div>
   <p class="layer-legend">Compare open-edge outlets with connected-water terminals. Changing the region, outlet policy, or sample spacing changes this experiment, not the production world. No river carving or globally proven ocean classification yet.</p>
   <section class="analysis-config" aria-label="Fixed analysis region">
+    <label>World model<select id="model"><option value="legacy">Original coast</option><option value="continental">Continental terrain</option></select></label>
     <label>Seed<input id="seed" value="42" inputmode="numeric"></label>
     <label>Origin x<input id="x" value="-65536" type="number" step="1"></label>
     <label>Origin z<input id="z" value="-65536" type="number" step="1"></label>

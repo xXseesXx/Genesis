@@ -1,0 +1,58 @@
+# Genesis session handoff
+
+Checkpoint: 2026-09-08, `genesis-m3a-v4`. Read this first after a context reset; inspect `git status` and the current commit/CI before making changes. This note preserves project context, not a claim that the conversation runtime was compacted.
+
+## User requirements
+
+- Minecraft 1.7.10 / GTNH eventually, raw generation first. Follow the original `Dev-Roadmap.md`; proposals are in `docs/Roadmap-Review.md`. Do not overwrite either original roadmap/concept notes or this repository's Git metadata.
+- Infinite, non-repeating plane; deterministic regardless of generation order, crop or zoom. Numeric support ±2^40 is not a planet edge or terminal.
+- Continental landmasses, not noise as the sole organizing structure. Placeholder relief is acceptable while larger systems are developed.
+- All field controls in the viewer's **top bar**. Dedicated continental viewer requested: actual terrain plus all relevant coast/drainage fields wired to continents.
+- Generate diagnostic images from code and inspect them. The old JS prototype is unavailable, not a dependency; do not search for it again. Browser setup is not a blocker.
+- Git commits/push authorized. Origin is `https://github.com/xXseesXx/Genesis`, branch main. No force push. No subagents unless explicitly authorized by user/instructions.
+
+## Run and validation
+
+PowerShell cwd: `C:\Users\fabib\Documents\Minecraft\1.7.10\Genesis`.
+
+- `./genesis.ps1 test`: Java 8 core, Java 21 harness/oracle, all Java gates; about 25 seconds locally at this checkpoint.
+- `./genesis.ps1 serve`: loopback `http://127.0.0.1:8787/`. Check the listening process before restarting; do not kill unrelated Java processes.
+- `./genesis.ps1 gallery`: code-generated candidate images/hashes; does not replace golden baselines.
+- Optional `node harness/gates/viewer-contracts.cjs` against the running server: minimal-DOM application-logic tests with real HTTP, not browser layout QA. Node is not required for the Java-only test command.
+- CI `.github/workflows/core.yml`: Windows + Ubuntu, JDK21, uploads gallery, core JAR and timings. v4 actions emit deprecation warnings but have passed; upgrading them is separate maintenance.
+- `build/` is ignored. Use `apply_patch` for source/text edits. Preserve unrelated user changes.
+
+## Current implementation
+
+`Generator` is the composition root. Two-argument construction is LEGACY; third argument `Generator.Model.CONTINENTAL` selects the integrated continent model. Model + seed + full Params + version define a world. FieldRegistry/TileCache preserve exact typed values; Long identities are JSON strings. 24 fields, 28 numeric parameters. Noise/plate topology remain upstream inputs in both models.
+
+Continental flow: immutable `ContinentalScaffold` → registered raw integer support → `CoastTopology` optional registered score input → fixed coarse triangulation → shared mask/continentality/elevation/bounded drainage → `CoarseChannels`/`BoundaryPorts`. In continental mode the candidate mask aliases committed seaMask, not the un-interpolated raw shape. The raw support remains a clearly labeled diagnostic.
+
+Continental height = coast score * landHeight + coast-tapered tectonic uplift + coast-tapered squared ridged-noise detail (`terrainDetailHeight`, default 900). Those last two terms are exposed separately. Water has bathymetry and zero land-relief terms. This is NOT hydrology-conditioned carving. Legacy field outputs and all 160 historical PNG baselines are unchanged.
+
+The five-lobe scaffold uses connected, seeded macro objects, exact lattice identities, bounded 3x3 support and a bounded immutable-object cache. Objects can merge. Neither the raw union nor its coarse sampled coast establishes globally unique basin identities, global ocean connectivity, or finite upstream dependencies. `docs/Continental-Scaffold.md` contains bounds, exact formulas and limitations.
+
+Routing still searches a bounded Manhattan radius for a sea anchor; rank/direction/distance are -1 when unresolved. Resolved paths strictly decrease rank, but terminals are sea-level anchors, not proven ocean mouths. Guides may cross uphill terrain, are not carved rivers, and have no production flux. Never replace unresolved cases with canvas-edge outlets.
+
+`DrainageRefinement` is a pure four-child kernel: inherited canonical ports, exact parent inflow/local rain/outflow ledger, integer shortest-path resistance, canonical rain remainder splitting and exact accumulation. Tests include exhaustive four-node paths, adjacent parents, composed subdivision, overflow and concurrency. Still lacks world root hierarchy, full corridor H4 enforcement, weighted climate rainfall and physical channel profiles. `refinement.html` is explicitly a synthetic fixture.
+
+The independent Java21 `FiniteHydrology` oracle is finite priority-flood D8 routing, water components and exact flux/window ledgers. `hydrology.html` supports legacy or continental terrain; model survives incoming links, requests and exports. Connected-water mode is conditional on that sampled finite region, not global ocean truth. Oracle code is excluded from the Java8 core JAR.
+
+## Viewer surfaces
+
+- `/`: original field laboratory, legacy model. Continental candidate controls moved off this page; link opens the dedicated page.
+- `/continents.html`: separate HTML, shared `app.js`/`style.css`, fixed `data-world=continental`. Top-bar layers, actual height by default, continental overview, pan/zoom, A/B, exact inspector, PNG/config exports. Inapp requests assert returned model. Legacy-only coast controls hidden; tectonic/crust diagnostics explicitly distinguished from land masks.
+- `/hydrology.html?model=continental`: finite fill/catchment/runoff analysis of continental heights and mask. Model selector visible.
+- `/refinement.html`: independent parent-ledger fixture, not derived from continental terrain.
+
+Relevant code images inspected: `continental-terrain-overview.png`, `continental-terrain-regional.png`, `continental-world-layers.png`. Existing reference/canonical/refinement diagnostics remain available. Do not claim real-browser gesture/layout checks from the minimal-DOM smoke test.
+
+## Gates and continuation
+
+New `ContinentalWorldGates`: coast/height/mask agreement, relief independence of coast, shape coverage propagation through drainage and guides, descending routes to continental sea, all-field cold crops/zoom, edge coordinates/nonstandard spacing, evicted concurrent relief queries, eight exact multi-field hashes (`continental-world.properties`). Raw scaffold has its own eight hashes; old PNG baselines unchanged. HTTP tests compare continental render/sample/finite analysis to direct core outputs and reject unknown model values. Timings include continental terrain and guides/ports separately (roughly 100/340 ms locally for 512²).
+
+Remaining before the original M9 scope: infinite-world root/ocean contract and full hydrology cascade; channel/valley terrain conditioning; geological events/stratigraphy/folds/faults; differential erosion and scenario loading; climate; sediment/soil/vegetation; integrated correctness/morphology/performance acceptance. Introduce coarse hardness/rainfall inputs before final dependent commitments to avoid circular generation. Uniform inputs and explicit fixtures are valid early stages.
+
+Suggested next bounded work: multilevel refinement under explicit parent contracts, then downhill channel-bed/valley primitives on current placeholder relief. Continents' visual polish can wait, but global hydrology cannot be called complete without constructive terminal/root commitments. See the prior user-facing roadmap discussion; do not infer that a field interface makes arbitrary noise a valid drainage-root provider.
+
+When integrating Minecraft later, import the GTNH ExampleMod starter under `mc-adapter/` without replacing Genesis Git/root files. Caves, ores, full ecology and structures remain parked beyond initial realization.
