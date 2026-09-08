@@ -8,6 +8,8 @@ This is a whole-raster morphology/reference experiment with explicit terminals, 
 
 ## Missing external JavaScript oracle
 
+The user does not have a known original prototype. Stop treating its recovery as a task or prerequisite; develop and document independent references here instead. The confirmed production target is an infinite, order-independent world. The finite reference's crop-dependent outlets are diagnostic boundary conditions only; see [canonical drainage](../docs/Canonical-Drainage.md).
+
 The roadmap says a JavaScript plates → uplift → elevation → potential → D8 flow → river oracle already exists. It was not present in the supplied workspace. No replacement is being represented as that original.
 
 When supplied, place it here with its source/version, run command, parameter defaults, boundary/depression rules, and sample outputs. Keep it independent of `core/` and test-only. Java 64-bit hashes must use JavaScript `BigInt` with explicit 64-bit wrapping if compared bit-for-bit; JavaScript `Number` cannot represent arbitrary long seeds.

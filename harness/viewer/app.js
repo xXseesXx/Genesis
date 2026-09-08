@@ -127,7 +127,7 @@ $('resetParams').onclick=()=>{for(const spec of meta.params)state.params[spec.id
 async function init(){
   const response=await fetch('/api/meta');if(!response.ok)throw new Error('Could not load core metadata.');meta=await response.json();$('version').textContent=meta.version;
   for(const spec of meta.params)state.params[spec.id]=spec.default;makeParams();
-  const macro=['baseElevation','seaMask','continentality','coarseSeaDistance','coarseDrainageRank','coarseFlowDirection'];
+  const macro=['baseElevation','coarseChannelDistance','drainagePortDistance','seaMask','continentality','coarseSeaDistance','coarseDrainageRank','coarseFlowDirection'];
   const fields=[...macro.map(id=>meta.fields.find(f=>f.id===id)).filter(Boolean),...meta.fields.filter(f=>!macro.includes(f.id)&&!['noise','ridges','boundaryType'].includes(f.id)),...meta.fields.filter(f=>['noise','ridges'].includes(f.id)),...meta.fields.filter(f=>f.id==='boundaryType')];
   for(const field of fields){
     const layer={id:field.id,enabled:field.id==='baseElevation',opacity:1};state.layers.push(layer);
@@ -145,6 +145,8 @@ function syncLayers(){for(const layer of state.layers){layer.elements.check.chec
 function showLegend(){
   const descriptions=state.layers.filter(l=>l.enabled).map(layer=>{
     const f=meta.fields.find(f=>f.id===layer.id);
+    if(f.id==='coarseChannelDistance')return `${f.label}: cyan world-coordinate guides; unresolved coarse routes stay absent. No flux, carving, or globally proven ocean mouths yet.`;
+    if(f.id==='drainagePortDistance')return `${f.label}: gold shared-edge crossings; identical from either cell and independent of the viewport.`;
     const details=f.type==='Long'?'colors distinguish exact identities':f.id==='baseElevation'?'blue: below sea · green to pale: higher land · display hillshade':f.id==='seaMask'?'blue: sea-level terminal · green: land (global connectivity pending)':f.id==='coarseFlowDirection'?'pink: unresolved · blue: sea · gold: N · green: E · pale blue: S · coral: W':f.id.startsWith('coarse')?`${f.units} · pink: unresolved · values refer to the coarse anchor`:f.id==='boundaryType'?'blue: divergent · gold: transform · orange: convergent':f.id==='crustType'?'blue: oceanic · green: continental':f.id==='uplift'?'blue: extension · dark: neutral · orange: compression':`${f.min} → ${f.max} ${f.units} (display range)`;
     return `${f.label}: ${details}`;
   });

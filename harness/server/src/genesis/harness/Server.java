@@ -31,7 +31,7 @@ public final class Server {
         int port = args.length == 0 ? 8787 : Integer.parseInt(args[0]);
         Running running = start(port);
         Runtime.getRuntime().addShutdownHook(new Thread(running::close));
-        System.out.println("Genesis M2a viewer: http://127.0.0.1:" + running.port() + " (Ctrl+C to stop)");
+        System.out.println("Genesis " + Generator.VERSION + " viewer: http://127.0.0.1:" + running.port() + " (Ctrl+C to stop)");
     }
 
     public static final class Running implements AutoCloseable {

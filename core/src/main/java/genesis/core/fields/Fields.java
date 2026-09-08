@@ -20,4 +20,6 @@ public final class Fields {
     public static final FieldId<Integer> SEA_DISTANCE = new FieldId<Integer>("coarseSeaDistance", "Coarse sea distance", "anchor Manhattan blocks; -1 unresolved", Integer.class, 0, 65536);
     public static final FieldId<Integer> DRAINAGE_RANK = new FieldId<Integer>("coarseDrainageRank", "Coarse drainage rank", "anchor steps; -1 unresolved", Integer.class, 0, 32);
     public static final FieldId<Integer> FLOW_DIRECTION = new FieldId<Integer>("coarseFlowDirection", "Coarse flow direction", "-1 unresolved / 0 sea / 1 N / 2 E / 3 S / 4 W", Integer.class, -1, 4);
+    public static final FieldId<Integer> CHANNEL_DISTANCE = new FieldId<Integer>("coarseChannelDistance", "Coarse route guides", "blocks to guide; capped at coarseSpacing/4; not carved rivers", Integer.class, 0, 4096);
+    public static final FieldId<Integer> PORT_DISTANCE = new FieldId<Integer>("drainagePortDistance", "Shared drainage ports", "blocks to active crossing; capped at coarseSpacing/4", Integer.class, 0, 4096);
 }

@@ -6,10 +6,11 @@ import genesis.core.fields.Noise;
 import genesis.core.tectonics.Tectonics;
 import genesis.core.elevation.CoastTopology;
 import genesis.core.elevation.MacroElevation;
+import genesis.core.hydro.CoarseChannels;
 
 /** Composition root: only here may concrete field implementations be wired together. */
 public strictfp final class Generator {
-    public static final String VERSION = "genesis-m2a-v1";
+    public static final String VERSION = "genesis-m3a-v1";
     public final long seed;
     public final Params params;
     public final FieldRegistry fields;
@@ -34,13 +35,18 @@ public strictfp final class Generator {
             .build();
         final CoastTopology coast = new CoastTopology(seed, params, tectonicFields);
         final MacroElevation elevation = new MacroElevation(coast, params, tectonicFields);
-        this.fields = new FieldRegistry.Builder().include(tectonicFields)
+        final FieldRegistry coastFields = new FieldRegistry.Builder().include(tectonicFields)
             .add(Fields.CONTINENTALITY, elevation::continentality)
             .add(Fields.BASE_ELEVATION, elevation::elevation)
             .add(Fields.SEA_MASK, (x, z) -> coast.numerator(x, z) <= 0 ? 1 : 0)
             .add(Fields.SEA_DISTANCE, (x, z) -> { int rank = coast.at(x, z).rank; return rank < 0 ? -1 : rank * coast.spacing; })
             .add(Fields.DRAINAGE_RANK, (x, z) -> coast.at(x, z).rank)
             .add(Fields.FLOW_DIRECTION, (x, z) -> coast.at(x, z).direction)
+            .build();
+        final CoarseChannels channels = new CoarseChannels(seed, params, coastFields);
+        this.fields = new FieldRegistry.Builder().include(coastFields)
+            .add(Fields.CHANNEL_DISTANCE, channels::channelDistance)
+            .add(Fields.PORT_DISTANCE, channels::portDistance)
             .build();
     }
 }

@@ -46,12 +46,13 @@ public final class Gates {
         TectonicGates.run();
         CoastGates.run();
         HydrologyGates.run();
+        ChannelGates.run();
         determinism();
         golden(false);
         lint();
         http();
         budget();
-        System.out.printf("PASS M0/M1/M2a + finite hydrology reference gates (%.2f s). Production global hydrology/cascade remain deferred.%n", (System.nanoTime() - start) / 1e9);
+        System.out.printf("PASS M0/M1/M2a/M3a geometry + finite reference gates (%.2f s). Production global hydrology/cascade remain deferred.%n", (System.nanoTime() - start) / 1e9);
     }
     private static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
     private static void rejects(Runnable action) {
@@ -171,6 +172,7 @@ public final class Gates {
         goldenSet(candidates, "m0", List.of(Fields.NOISE, Fields.RIDGES));
         goldenSet(candidates, "m1", List.of(Fields.PLATE_ID, Fields.SUB_PLATE_ID, Fields.VELOCITY_X, Fields.VELOCITY_Z, Fields.BOUNDARY_TYPE, Fields.BOUNDARY_DISTANCE, Fields.UPLIFT, Fields.CRUST_TYPE, Fields.CRUST_AGE));
         goldenSet(candidates, "m2a", List.of(Fields.CRUST_FRACTION, Fields.CONTINENTALITY, Fields.BASE_ELEVATION, Fields.SEA_MASK, Fields.SEA_DISTANCE, Fields.DRAINAGE_RANK, Fields.FLOW_DIRECTION));
+        goldenSet(candidates, "m3a", List.of(Fields.CHANNEL_DISTANCE, Fields.PORT_DISTANCE));
     }
     private static void goldenSet(boolean candidates, String milestone, List<FieldId<?>> fields) throws Exception {
         Properties baseline = new Properties();
@@ -178,7 +180,7 @@ public final class Gates {
         check(("genesis-" + milestone + "-v1").equals(baseline.getProperty("version")), "Golden version mismatch");
         Map<String, Double> parameters = new LinkedHashMap<>();
         for (String id : Params.SPECS.keySet()) {
-            if (!milestone.equals("m2a") && !baseline.containsKey("param." + id)) continue;
+            if (List.of("m0", "m1").contains(milestone) && !baseline.containsKey("param." + id)) continue;
             parameters.put(id, Double.parseDouble(baseline.getProperty("param." + id)));
             check(parameters.get(id).equals(Params.defaults().get(id)), "Default changed: explicitly update golden params " + id);
         }
@@ -225,9 +227,12 @@ public final class Gates {
                     String imported = matcher.group(2);
                     if (!owner.isEmpty()) check(!subsystems.contains(imported) || imported.equals(owner), "LINT cross-subsystem import: " + path);
                 }
-                // Until topology exists, require explicit gate extension when adding it; no pretend float-proof.
-                if (owner.equals("hydro"))
-                    throw new AssertionError("Extend LINT with integer topology checks when adding " + owner);
+                if (owner.equals("hydro")) {
+                    check(List.of("BoundaryPorts.java", "CoarseChannels.java").contains(path.getFileName().toString()),
+                        "Extend hydrology integer/literal gates before adding a new module: " + path);
+                    check(!Pattern.compile("\\b(?:double|float)\\b|Math\\.(?:sqrt|pow|hypot)|signedUnit|params\\.get\\(").matcher(code).find(),
+                        "LINT floating drainage geometry/topology: " + path);
+                }
                 if (path.getFileName().toString().equals("PlateTopology.java"))
                     check(!Pattern.compile("\\b(?:double|float)\\b|Math\\.(?:sqrt|pow)|signedUnit").matcher(code).find(), "LINT floating topology: " + path);
                 if (path.getFileName().toString().equals("CoastTopology.java"))
@@ -243,7 +248,9 @@ public final class Gates {
                             || (file.equals("PlateTopology.java") && List.of("2", "3", "4", "7", "16", "32", "64", "100", "256", "1000", "4096", "1L", "0xffffffffL", "0x504c415445L").contains(n))
                             || (file.equals("Tectonics.java") && n.equals("6"))
                             || (file.equals("CoastTopology.java") && List.of("2", "3", "4", "16", "1000", "8192", "4096", "0x434f415354L").contains(n))
-                            || (file.equals("MacroElevation.java") && n.equals("1000.0"));
+                            || (file.equals("MacroElevation.java") && n.equals("1000.0"))
+                            || (file.equals("BoundaryPorts.java") && List.of("2", "3", "4", "20", "0x504f525453L").contains(n))
+                            || (file.equals("CoarseChannels.java") && List.of("2", "3", "4", "16", "512").contains(n));
                         check(allowed, "LINT unregistered numeric tuning: " + path + " literal " + n);
                     }
                 }
@@ -313,11 +320,16 @@ public final class Gates {
         for (int i = 0; i < frames.length; i++) frames[i] = Renderer.render(g,
             new Renderer.Layer[] {new Renderer.Layer(Fields.BASE_ELEVATION, 1)}, -65536, -65536, 256, 512, 512).nanos();
         double frameMedian = percentile(frames, .5);
+        long[] guideFrames = new long[5];
+        for (int i = 0; i < guideFrames.length; i++) guideFrames[i] = Renderer.render(g,
+            new Renderer.Layer[] {new Renderer.Layer(Fields.BASE_ELEVATION, 1), new Renderer.Layer(Fields.CHANNEL_DISTANCE, 1), new Renderer.Layer(Fields.PORT_DISTANCE, 1)},
+            -65536, -65536, 256, 512, 512).nanos();
+        double guideMedian = percentile(guideFrames, .5);
         String report = String.format(java.util.Locale.ROOT,
-            "{\"version\":\"%s\",\"java\":\"%s\",\"os\":\"%s\",\"processors\":%d,\"chunkColdP95Ms\":%.4f,\"chunkWarmP95Ms\":%.4f,\"render512MedianMs\":%.2f}%n",
-            Generator.VERSION, System.getProperty("java.version"), System.getProperty("os.name"), Runtime.getRuntime().availableProcessors(), cold95, warm95, frameMedian);
+            "{\"version\":\"%s\",\"java\":\"%s\",\"os\":\"%s\",\"processors\":%d,\"chunkColdP95Ms\":%.4f,\"chunkWarmP95Ms\":%.4f,\"render512MedianMs\":%.2f,\"guideRender512MedianMs\":%.2f}%n",
+            Generator.VERSION, System.getProperty("java.version"), System.getProperty("os.name"), Runtime.getRuntime().availableProcessors(), cold95, warm95, frameMedian, guideMedian);
         Files.writeString(Path.of("build/budget.json"), report);
-        check(cold95 <= 25 && warm95 <= 1 && frameMedian < 1000, "BUD over M0 thresholds: " + report);
-        System.out.printf("PASS BUD: all M2a fields cold p95 %.3f ms/chunk, cached p95 %.3f ms/chunk; 512-square elevation median %.1f ms%n", cold95, warm95, frameMedian);
+        check(cold95 <= 25 && warm95 <= 1 && frameMedian < 1000 && guideMedian < 1000, "BUD over current thresholds: " + report);
+        System.out.printf("PASS BUD: all 20 fields cold p95 %.3f ms/chunk, cached p95 %.3f ms/chunk; 512-square elevation %.1f ms, guides+ports %.1f ms median%n", cold95, warm95, frameMedian, guideMedian);
     }
 }

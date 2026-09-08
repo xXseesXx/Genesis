@@ -51,6 +51,15 @@ public final class Renderer {
                     color = blend(0x101b22, color, Math.max(.35, Math.min(1, .45 + .65 * light)));
                 }
                 double opacity = layer.opacity;
+                if (layer.field == Fields.CHANNEL_DISTANCE || layer.field == Fields.PORT_DISTANCE) {
+                    // World-coordinate distance is pure; stroke thickness is display-only.
+                    // Keep thickness below the distance cap so absent guides never fill the map.
+                    double stroke = Math.min(generator.params.integer("coarseSpacing") / 16.0,
+                        step * (layer.field == Fields.PORT_DISTANCE ? 2.0 : 1.25));
+                    color = layer.field == Fields.PORT_DISTANCE ? 0xffd17b : 0x64dce6;
+                    opacity *= Math.max(0, 1 - value / stroke);
+                    if (layerIndex == 0) image.setRGB(col, row, 0x102029);
+                }
                 if (layer.field == Fields.BOUNDARY_TYPE) {
                     double distance = generator.fields.get(Fields.BOUNDARY_DISTANCE, x + col * step, z + row * step);
                     // Two sample pixels is a display stroke, never a generator corridor commitment.
