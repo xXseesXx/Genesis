@@ -1,5 +1,9 @@
 # Reference oracles
 
+## Conservative-source research experiment
+
+`src/genesis/oracle/ConservativeRunoff.java` conditions fine local sources on supplied terminal net-runoff budgets using actual upstream-subtree ownership. It preprocesses a complete finite graph, reuses the core hash primitive, and remains outside the Java8 production JAR. Independent source walks, allocation references and R1a boundary composition check exact results. [Results and limitations](../research/conservative-runoff-experiment.md) include unbalanced query cost and non-monotonic integer apportionment; this is not an infinite-world rainfall generator.
+
 ## Boundary-summary research experiment
 
 `src/genesis/oracle/BoundaryFlowSummary.java` implements exact finite DAG reduction to boundary transfers, with nested coarsening and explicit terminals. It is Java21 test/research code, excluded from the production core JAR. The complete finite source graph is an input; no world-root or constant-size summary guarantee is claimed. [Experiment contracts and results](../research/boundary-flow-experiment.md) describe the independent reference tests and code-generated diagnostics.

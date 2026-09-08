@@ -23,7 +23,7 @@ Each immutable node has a stable original key, one receiver key (or explicit ter
 
 Summarizing again using a **coarsening** of the original partition composes the transfer model. A summary is not a replacement for the eliminated geometry when refining or repartitioning more finely; retain/regenerate the source graph for that.
 
-Complete construction is not a cold local query. Canonical sorting costs O(N log N); graph traversal and reduction cost O(N), with O(N) working memory. Subsequent accumulation is O(P), where P is the retained-port/terminal count. In the worst case P = N. Root generation and root lookup are not implemented.
+Complete construction is not a cold local query. Canonical sorting costs O(N log N); interior graph traversal and elimination cost O(N), with O(N) working memory. Subsequent accumulation traverses O(P) retained ports/terminals, while the current sorted result-map construction costs O(P log P). In the worst case P = N. Root generation and root lookup are not implemented.
 
 ## Validation
 

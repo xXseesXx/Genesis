@@ -28,4 +28,5 @@ jobs:
             build/gallery/
             build/budget.json
             build/boundary-summary.json
+            build/conservative-runoff.json
             build/genesis-core.jar
