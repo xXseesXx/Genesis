@@ -4,6 +4,8 @@ A deterministic terrain generator for a future Minecraft 1.7.10 / GTNH mod. Deve
 
 The **M0 foundation, M1 tectonics, and M2a coast/elevation prototype are implemented**. Eighteen fields expose plate structure, crust blending, committed land/sea signs, macro elevation, and bounded coarse drainage diagnostics. Local automated checks pass. M2a is a partial milestone: global ocean connectivity and the hydrology cascade remain open, and unresolved drainage is explicit. Minecraft integration remains deferred. See [tectonics](docs/Tectonics.md) and [coasts/elevation](docs/Coasts-and-Elevation.md) for assumptions and bounds.
 
+An independent **finite hydrology reference** now adds depression filling, D8 flood-tree routing, catchments, exact land-cell runoff, and sampled water connectivity in a separate fixed-region laboratory. It deliberately does not change the production terrain fields. See [finite hydrology contracts](docs/Finite-Hydrology.md).
+
 ## Run
 
 Requires JDK 21 (`java`, `javac`, `jar` on PATH) and PowerShell. No downloaded Java dependencies, Gradle installation, Minecraft installation, or npm packages are needed for the standalone prototype.
@@ -23,6 +25,8 @@ The viewer puts **all field controls in a horizontal top bar above the maps**, w
 
 Macro elevation is the initial view, with land hillshade, bathymetry colors, and sampled viewport land fraction. Pink coarse drainage cells mean unresolved within the search radius. Coarse rank/distance/direction describe the cell anchor, not the exact fine column, and are not yet carved rivers.
 
+Use **Open finite hydrology reference** above the main map, or open [the hydrology laboratory](http://127.0.0.1:8787/hydrology.html). Its eight diagnostic layers stay in a horizontal top bar. Analyze a fixed region, inspect downstream paths, adjust the runoff overlay, and export the exact result/configuration as JSON. All edge cells are declared outlets; boundary-connected water is explicitly not called globally proven ocean.
+
 The Java 21 harness serves only on IPv4 loopback. The core is compiled with `--release 8`, uses strict floating-point evaluation, and has no Minecraft, HTTP, rendering, or third-party dependencies. That preserves a conservative bytecode target for eventual reuse; actual GTNH compatibility still requires M9 integration tests.
 
 ## Structure
@@ -34,7 +38,7 @@ The Java 21 harness serves only on IPv4 loopback. The core is compiled with `--r
 | `harness/viewer/` | Local HTML/CSS/JS viewer |
 | `harness/gates/src/` | Executable correctness, rendering, API, lint, and timing checks |
 | `harness/golden/` | Versioned parameters, reference PNGs, and exact pixel hash baselines |
-| `oracle/` | Location reserved for the existing external JS reference |
+| `oracle/` | Independent finite Java reference; the original external JS oracle is still missing |
 | `mc-adapter/` | Integration plan only; GTNH ExampleMod starter is deferred to M9 |
 | `docs/Roadmap-Review.md` | Proposed clarifications and hydrology risks |
 
@@ -62,13 +66,14 @@ Coordinates are signed integer block positions. Bulk tiles are row-major and sam
 - GOLD: 144 reference PNGs: 16 unchanged M0, 72 unchanged M1, and 56 M2a; exact row-major ARGB SHA-256 against versioned baselines. Output PNGs are generated in `build/gallery/`; a mismatch produces a highlighted pixel-difference image.
 - TECT: larger-window ownership/distance reference, symmetric boundary classes, sub-plate refinement stability, sampled uplift continuity, extreme parameters, and concurrent/evicted memoization.
 - COAST: analytic coast fixture, exact land/height sign agreement, coast-preserving relief changes, zoom/edge stability, independent nearest-terminal rank reference, monotone resolved paths, explicit unresolved behavior, and memoization checks.
+- HYDRO reference: analytic spill/water fixtures, 300 independent minimax comparisons, exact runoff conservation and acyclic outlet ownership, and a 1024² synthetic raster. This does not yet compare a production cascade to a global oracle.
 - LINT: state/dependency guards, cross-subsystem imports, numeric allowlists, and an integer-only topology source check. These are guardrails, not a formal whole-program purity proof. Future hydrology must extend them.
 - HTTP: assets, field metadata, inspection, image composition against direct core output, and malformed request rejection.
 - BUD: all current fields, p95 cold ≤25 ms/chunk, p95 cached ≤1 ms/chunk, and median of five 512² macro-elevation renders <1 s after JVM warmup. Results and environment are recorded in `build/budget.json`. This excludes browser painting, PNG transport, and future terrain fields.
 
 CI targets Windows and Linux with JDK 21 and uploads gallery images, timing reports, and the core JAR. Browser automation was unavailable during implementation, so the HTTP contract and generated PNGs were checked, but interactive layout and gestures still need browser verification. Lint/hash checks are targeted guards rather than formal proofs.
 
-The inspector has scalar values and exact plate/child identities. Scenario loading, stratigraphy, cascade windows, full scientific terrain metrics, arbitrary-size stitched exports, and global hydrology/oracle gates arrive with their owning milestones. HTTP image requests currently cap each dimension at 1024; core tiles cap at 2048. There is no substituted external oracle or claim of global drainage correctness.
+The inspector has scalar values and exact plate/child identities. Scenario loading, stratigraphy, cascade windows, full scientific terrain metrics, arbitrary-size stitched exports, and production cascade/oracle comparison gates arrive with their owning milestones. HTTP image requests currently cap each dimension at 1024; core tiles cap at 2048; finite hydrology API requests cap each dimension at 256. There is no substituted external oracle or claim of global drainage correctness.
 
 To intentionally change golden output, run `gallery`, inspect the candidate PNGs, then explicitly update the corresponding reference PNGs and `.properties` manifest under `harness/golden/m0`, `m1`, or `m2a` in the same reviewed change as the generator update. The gallery command never changes these baselines automatically. Prior milestones' references remain independent of added fields.
 

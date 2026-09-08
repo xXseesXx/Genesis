@@ -45,12 +45,13 @@ public final class Gates {
         avalanche();
         TectonicGates.run();
         CoastGates.run();
+        HydrologyGates.run();
         determinism();
         golden(false);
         lint();
         http();
         budget();
-        System.out.printf("PASS M0/M1/M2a implemented gates (%.2f s). Global hydrology/cascade ORACLE remain deferred.%n", (System.nanoTime() - start) / 1e9);
+        System.out.printf("PASS M0/M1/M2a + finite hydrology reference gates (%.2f s). Production global hydrology/cascade remain deferred.%n", (System.nanoTime() - start) / 1e9);
     }
     private static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
     private static void rejects(Runnable action) {
@@ -254,7 +255,7 @@ public final class Gates {
     private static void http() throws Exception {
         try (Server.Running server = Server.start(0); HttpClient client = HttpClient.newHttpClient()) {
             String base = "http://127.0.0.1:" + server.port();
-            for (String path : List.of("/", "/style.css", "/app.js", "/api/meta", "/api/sample?seed=-9223372036854775808&x=-1&z=16")) {
+            for (String path : List.of("/", "/style.css", "/app.js", "/hydrology.html", "/hydrology.js", "/api/meta", "/api/sample?seed=-9223372036854775808&x=-1&z=16")) {
                 var response = client.send(HttpRequest.newBuilder(URI.create(base + path)).build(), HttpResponse.BodyHandlers.ofString());
                 check(response.statusCode() == 200 && !response.body().isEmpty(), "HTTP GET " + path);
             }
@@ -268,6 +269,15 @@ public final class Gates {
             BufferedImage expected = Renderer.render(new Generator(42, Params.defaults()), new Renderer.Layer[] {
                 new Renderer.Layer(Fields.NOISE, 1), new Renderer.Layer(Fields.RIDGES, .25)}, -32, -32, 8, 32, 32).image();
             check(pixels(actual).equals(pixels(expected)), "HTTP composition differs from core render");
+            String hydroQuery = "seed=-9223372036854775808&x=-65536&z=-65536&width=8&height=8&step=4096";
+            var hydro = client.send(HttpRequest.newBuilder(URI.create(base + "/api/hydrology?" + hydroQuery)).build(), HttpResponse.BodyHandlers.ofString());
+            String direct = HydrologyAnalysis.json(new Generator(Long.MIN_VALUE, Params.defaults()), -65536, -65536, 4096, 8, 8);
+            check(hydro.statusCode() == 200 && hydro.body().replaceAll("\"milliseconds\":[0-9.E+-]+", "\"milliseconds\":0")
+                .equals(direct.replaceAll("\"milliseconds\":[0-9.E+-]+", "\"milliseconds\":0")), "HTTP finite analysis differs from direct solver");
+            for (String query : List.of("width=1", "height=257", "width=2147483648", "step=0", "step=1048577", "x=1099511627776&step=1", "z=-1099511627777", "layers=noise:1", "seaThreshold=NaN")) {
+                var response = client.send(HttpRequest.newBuilder(URI.create(base + "/api/hydrology?" + query)).build(), HttpResponse.BodyHandlers.ofString());
+                check(response.statusCode() == 400 && response.body().startsWith("{\"error\":"), "HTTP invalid hydrology query: " + query);
+            }
             for (String query : List.of("width=0", "width=1025", "step=0", "step=9223372036854775807", "octaves=2.5", "amplitude=NaN", "layers=noise:NaN", "layers=missing:1", "seed=9223372036854775808", "x=1099511627777", "seed=1&seed=2", "typo=1")) {
                 var response = client.send(HttpRequest.newBuilder(URI.create(base + "/api/render?" + query)).build(), HttpResponse.BodyHandlers.ofString());
                 check(response.statusCode() == 400 && response.body().startsWith("{\"error\":"), "HTTP invalid query: " + query);

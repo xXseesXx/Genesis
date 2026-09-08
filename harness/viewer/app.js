@@ -107,6 +107,7 @@ for(const side of ['A','B']) {
 function download(blob,name) {const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 $('export').onclick=()=>{if(state.images.A){download(state.images.A,'genesis-A.png');download(new Blob([JSON.stringify({version:meta.version,query:state.requests.A},null,2)],{type:'application/json'}),'genesis-A.json');if($('compare').checked&&state.images.B){download(state.images.B,'genesis-B.png');download(new Blob([JSON.stringify({version:meta.version,query:state.requests.B},null,2)],{type:'application/json'}),'genesis-B.json');}}};
 $('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);
+$('hydrologyLink').onclick=event=>{try{$('hydrologyLink').href='/hydrology.html?'+new URLSearchParams({...config('A'),x:state.x,z:state.z,step:Math.min(1048576,state.step*4)});}catch(e){event.preventDefault();error(e.message);}};
 $('home').onclick=()=>{state.x=-256*state.step;state.z=-256*state.step;schedule();};
 $('compare').onchange=()=>{$('figureB').hidden=!$('compare').checked;$('compareOptions').hidden=!$('compare').checked;$('maps').classList.toggle('compare',$('compare').checked);schedule();};
 for(const id of ['seedA','seedB','paramsB'])$(id).addEventListener('input',schedule);

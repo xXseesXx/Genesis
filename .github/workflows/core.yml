@@ -1,9 +1,9 @@
 name: Standalone core gates
 on:
   push:
-    paths: ['core/**', 'harness/**', 'genesis.ps1', '.github/workflows/core.yml']
+    paths: ['core/**', 'oracle/**', 'harness/**', 'genesis.ps1', '.github/workflows/core.yml']
   pull_request:
-    paths: ['core/**', 'harness/**', 'genesis.ps1', '.github/workflows/core.yml']
+    paths: ['core/**', 'oracle/**', 'harness/**', 'genesis.ps1', '.github/workflows/core.yml']
   workflow_dispatch:
 jobs:
   standalone:
