@@ -255,7 +255,7 @@ public final class Gates {
     private static void http() throws Exception {
         try (Server.Running server = Server.start(0); HttpClient client = HttpClient.newHttpClient()) {
             String base = "http://127.0.0.1:" + server.port();
-            for (String path : List.of("/", "/style.css", "/app.js", "/hydrology.html", "/hydrology.js", "/api/meta", "/api/sample?seed=-9223372036854775808&x=-1&z=16")) {
+            for (String path : List.of("/", "/style.css", "/app.js", "/hydrology.html", "/hydrology.js", "/hydrology.css", "/api/meta", "/api/sample?seed=-9223372036854775808&x=-1&z=16")) {
                 var response = client.send(HttpRequest.newBuilder(URI.create(base + path)).build(), HttpResponse.BodyHandlers.ofString());
                 check(response.statusCode() == 200 && !response.body().isEmpty(), "HTTP GET " + path);
             }
@@ -274,11 +274,17 @@ public final class Gates {
             String direct = HydrologyAnalysis.json(new Generator(Long.MIN_VALUE, Params.defaults()), -65536, -65536, 4096, 8, 8);
             check(hydro.statusCode() == 200 && hydro.body().replaceAll("\"milliseconds\":[0-9.E+-]+", "\"milliseconds\":0")
                 .equals(direct.replaceAll("\"milliseconds\":[0-9.E+-]+", "\"milliseconds\":0")), "HTTP finite analysis differs from direct solver");
-            for (String query : List.of("width=1", "height=257", "width=2147483648", "step=0", "step=1048577", "x=1099511627776&step=1", "z=-1099511627777", "layers=noise:1", "seaThreshold=NaN")) {
+            var waterHydro = client.send(HttpRequest.newBuilder(URI.create(base + "/api/hydrology?" + hydroQuery + "&outlets=connectedWater")).build(), HttpResponse.BodyHandlers.ofString());
+            String waterDirect = HydrologyAnalysis.json(new Generator(Long.MIN_VALUE, Params.defaults()), -65536, -65536, 4096, 8, 8, "connectedWater");
+            check(waterHydro.statusCode() == 200 && waterHydro.body().replaceAll("\"milliseconds\":[0-9.E+-]+", "\"milliseconds\":0")
+                .equals(waterDirect.replaceAll("\"milliseconds\":[0-9.E+-]+", "\"milliseconds\":0")), "HTTP connected-water analysis differs");
+            var dryHydro = client.send(HttpRequest.newBuilder(URI.create(base + "/api/hydrology?width=8&height=8&outlets=connectedWater&continentalPercent=100&crustInfluence=1000")).build(), HttpResponse.BodyHandlers.ofString());
+            check(dryHydro.statusCode() == 200 && dryHydro.body().contains("\"unresolvedLandCells\":64,\"terminalCount\":0"), "HTTP fabricated dry-grid terminal");
+            for (String query : List.of("width=1", "height=257", "width=2147483648", "step=0", "step=1048577", "x=1099511627776&step=1", "z=-1099511627777", "layers=noise:1", "seaThreshold=NaN", "outlets=ocean", "outlets=")) {
                 var response = client.send(HttpRequest.newBuilder(URI.create(base + "/api/hydrology?" + query)).build(), HttpResponse.BodyHandlers.ofString());
                 check(response.statusCode() == 400 && response.body().startsWith("{\"error\":"), "HTTP invalid hydrology query: " + query);
             }
-            for (String query : List.of("width=0", "width=1025", "step=0", "step=9223372036854775807", "octaves=2.5", "amplitude=NaN", "layers=noise:NaN", "layers=missing:1", "seed=9223372036854775808", "x=1099511627777", "seed=1&seed=2", "typo=1")) {
+            for (String query : List.of("width=0", "width=1025", "step=0", "step=9223372036854775807", "octaves=2.5", "amplitude=NaN", "layers=noise:NaN", "layers=missing:1", "seed=9223372036854775808", "x=1099511627777", "seed=1&seed=2", "typo=1", "outlets=edges")) {
                 var response = client.send(HttpRequest.newBuilder(URI.create(base + "/api/render?" + query)).build(), HttpResponse.BodyHandlers.ofString());
                 check(response.statusCode() == 400 && response.body().startsWith("{\"error\":"), "HTTP invalid query: " + query);
             }

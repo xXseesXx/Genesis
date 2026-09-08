@@ -2,13 +2,14 @@
 const $=id=>document.getElementById(id);
 const fields=[
   ['elevation','Macro elevation','Model metres · bathymetry blue; land green to pale'],
-  ['filled','Filled elevation','Model metres · minimum spill height to an edge outlet'],
+  ['filled','Filled elevation','Model metres · minimum spill height to a declared terminal · pink = unresolved'],
   ['fillDepth','Depression fill','Model metres · dark = no fill; amber to pale = deeper fill (log scale)'],
   ['water','Water connectivity','Green = land · blue = boundary-connected water · purple = enclosed sampled water'],
   ['accumulation','Runoff accumulation','Contributing land cells · dark to cyan (log scale)'],
-  ['outlet','Catchments','Categorical color per edge outlet; IDs are row-major cells within this region'],
-  ['downstream','Flow direction','D8 flood-tree direction hue · white = edge outlet'],
-  ['order','Flood order','Dark to pale = earlier to later processing; every route strictly decreases this index']
+  ['outlet','Catchments','Categorical color per terminal; IDs are row-major cells within this region · pink = unresolved'],
+  ['downstream','Flow direction','D8 flood-tree direction hue · white = terminal · pink = unresolved'],
+  ['order','Flood order','Dark to pale = earlier to later processing; every route strictly decreases this index'],
+  ['status','Routing status','Pink = unresolved · green = routed · white = terminal']
 ];
 let data=null, snapshot=null, selected=-1, layer='elevation', revision=0, controller=null, metadata=null;
 function fail(message){$('error').textContent=message;$('error').hidden=!message;}
@@ -25,7 +26,7 @@ function config(){
   const params=Object.fromEntries(metadata.params.map(p=>[p.id,p.default]));
   const q={seed,...params,...overrides};
   for(const id of ['x','z','step']){const raw=$(id).value;if(!/^-?\d+$/.test(raw)||!Number.isSafeInteger(Number(raw)))throw new Error(id+' must be an exact integer.');q[id]=raw;}
-  q.width=q.height=Number($('size').value);return new URLSearchParams(q);
+  q.width=q.height=Number($('size').value);q.outlets=$('outlets').value;return new URLSearchParams(q);
 }
 async function run(){
   const ticket=++revision;controller?.abort();controller=new AbortController();
@@ -36,14 +37,16 @@ async function run(){
     if(ticket!==revision)return;
     data=result;snapshot={query:query.toString(),...result};selected=-1;
     $('inspection').textContent='Select a cell to inspect and trace.';
-    $('region').textContent=`Seed ${query.get('seed')} · ${data.width} × ${data.height} · x ${data.x}, z ${data.z} · step ${data.step}`;
-    $('status').textContent=`${data.milliseconds.toFixed(0)} ms · fixed region`;
-    $('metrics').textContent=`${data.landCells.toLocaleString()} land cells → ${data.discharged.toLocaleString()} units at edge outlets. Balance: ${data.landCells===data.discharged?'exact':'FAILED'}. ${data.edgeWaterCells.toLocaleString()} edge-connected water cells; ${data.enclosedWaterCells.toLocaleString()} enclosed water cells.`;
+    $('region').textContent=`Seed ${query.get('seed')} · ${data.width} × ${data.height} · x ${data.x}, z ${data.z} · step ${data.step} · ${data.boundary}`;
+    $('status').textContent=`${data.milliseconds.toFixed(0)} ms · ${data.unresolvedLandCells?'unresolved drainage':'fixed region'}`;
+    $('metrics').textContent=`${data.landCells.toLocaleString()} land cells → ${data.discharged.toLocaleString()} discharged + ${data.unresolvedLandCells.toLocaleString()} unresolved. Balance: ${data.landCells===data.discharged+data.unresolvedLandCells?'exact':'FAILED'}. ${data.terminalCount.toLocaleString()} terminals. ${data.edgeWaterCells.toLocaleString()} edge-connected water cells; ${data.enclosedWaterCells.toLocaleString()} enclosed water cells.`;
     $('version').textContent=data.version+' / '+data.generatorVersion;$('save').disabled=false;draw();
   }catch(e){if(ticket===revision&&e.name!=='AbortError'){fail(e.message);$('status').textContent='Analysis failed; previous map retained';}}
 }
 const mix=(a,b,t)=>a.map((v,i)=>Math.round(v+(b[i]-v)*Math.max(0,Math.min(1,t))));
 function color(value,p,max){
+  if(layer==='status')return [[229,91,172],[84,160,112],[238,238,222]][value];
+  if(!['elevation','water'].includes(layer)&&data.fields.status[p]===0)return [229,91,172];
   if(layer==='water')return [[76,102,71],[39,125,167],[166,101,205]][value];
   if(layer==='outlet'){let h=Math.imul(value+1,0x45d9f3b);h=Math.imul(h^(h>>>16),0x45d9f3b);return [65+(h&127),65+((h>>>8)&127),65+((h>>>16)&127)];}
   if(layer==='downstream'){
@@ -59,7 +62,7 @@ function color(value,p,max){
 }
 function draw(){
   for(const button of $('layers').children){const active=button.dataset.field===layer;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));}
-  $('legend').textContent=fields.find(f=>f[0]===layer)[2];if(!data)return;
+  $('legend').textContent=fields.find(f=>f[0]===layer)[2]+(!['elevation','water','status'].includes(layer)?' · Pink cells have no solved drainage value.':'');if(!data)return;
   const canvas=$('map'),ctx=canvas.getContext('2d'),values=data.fields[layer],max=values.reduce((a,b)=>Math.max(a,b),0);
   canvas.width=data.width*4;canvas.height=data.height*4;ctx.imageSmoothingEnabled=false;
   const raster=document.createElement('canvas');raster.width=data.width;raster.height=data.height;
@@ -69,7 +72,11 @@ function draw(){
     const c=color(values[p],p,max);pixels.data.set([...c,255],p*4);
   }
   rc.putImageData(pixels,0,0);ctx.drawImage(raster,0,0,canvas.width,canvas.height);
-  if($('rivers').checked){ctx.fillStyle='#57ecf4';for(let p=0;p<values.length;p++)if(data.fields.water[p]===0&&data.fields.accumulation[p]>=threshold)ctx.fillRect(p%data.width*4+1,Math.floor(p/data.width)*4+1,2,2);}
+  if($('rivers').checked){ctx.fillStyle='#57ecf4';for(let p=0;p<values.length;p++)if(data.fields.status[p]!==0&&data.fields.water[p]===0&&data.fields.accumulation[p]>=threshold)ctx.fillRect(p%data.width*4+1,Math.floor(p/data.width)*4+1,2,2);}
+  const audit=Number($('audit').value),budget=audit<0?{rain:data.landCells,inflow:0,outflow:0,terminalDischarge:data.discharged,unresolvedRain:data.unresolvedLandCells}:data.windows[audit];
+  const left=budget.rain+budget.inflow,right=budget.outflow+budget.terminalDischarge+budget.unresolvedRain;
+  $('ledger').textContent=`Local runoff ${budget.rain} + incoming ${budget.inflow} = outgoing ${budget.outflow} + terminal discharge ${budget.terminalDischarge} + unresolved ${budget.unresolvedRain}. ${left===right?'BALANCED':'FAILED'} (${left} = ${right}).`;
+  if(audit>=0){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.strokeRect(budget.x0*4+1,budget.z0*4+1,(budget.x1-budget.x0)*4-2,(budget.z1-budget.z0)*4-2);}
   if(selected>=0){ctx.strokeStyle='#fff16c';ctx.lineWidth=2;ctx.beginPath();let p=selected;
     ctx.moveTo(p%data.width*4+2,Math.floor(p/data.width)*4+2);
     for(let k=0;k<values.length;k++){p=data.fields.downstream[p];if(p<0)break;ctx.lineTo(p%data.width*4+2,Math.floor(p/data.width)*4+2);}ctx.stroke();
@@ -81,17 +88,18 @@ $('map').onclick=event=>{
   const x=Math.max(0,Math.min(data.width-1,Math.floor((event.clientX-rect.left)/rect.width*data.width)));
   const z=Math.max(0,Math.min(data.height-1,Math.floor((event.clientY-rect.top)/rect.height*data.height)));selected=z*data.width+x;
   let lines=[`Cell ${selected} (${x}, ${z})`,`World x ${Number(data.x)+x*data.step}`,`World z ${Number(data.z)+z*data.step}`];
-  for(const [id,label] of fields){const value=data.fields[id][selected];lines.push(`${label}: ${['elevation','filled','fillDepth'].includes(id)?(value/1000).toFixed(3)+' m':value}`);}
+  for(const [id,label] of fields){const value=data.fields[id][selected];let text=['elevation','filled','fillDepth'].includes(id)?(value/1000).toFixed(3)+' m':value;if(data.fields.status[selected]===0&&!['elevation','water','status'].includes(id))text='unresolved';lines.push(`${label}: ${text}`);}
   $('inspection').textContent=lines.join('\n');draw();
 };
-for(const id of ['seed','x','z','step','size','overrides'])$(id).addEventListener('input',()=>{revision++;controller?.abort();$('status').textContent='Configuration changed — click Analyze region';});
-for(const id of ['rivers','threshold'])$(id).addEventListener('input',draw);
+for(const id of ['seed','x','z','step','size','overrides','outlets'])$(id).addEventListener('input',()=>{revision++;controller?.abort();$('status').textContent='Configuration changed — click Analyze region';});
+for(const id of ['rivers','threshold','audit'])$(id).addEventListener('input',draw);
 $('run').onclick=run;
 $('save').onclick=()=>{if(!snapshot)return;const url=URL.createObjectURL(new Blob([JSON.stringify(snapshot)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='genesis-hydrology.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
 async function init(){try{
   $('run').disabled=true;const response=await fetch('/api/meta');if(!response.ok)throw new Error('Cannot load generator metadata.');metadata=await response.json();
   const query=new URLSearchParams(location.search),overrides={};
   for(const id of ['seed','x','z','step'])if(query.has(id))$(id).value=query.get(id);
+  if(query.has('outlets')){if(!['edges','connectedWater'].includes(query.get('outlets')))throw new Error('Unknown outlet policy.');$('outlets').value=query.get('outlets');}
   for(const spec of metadata.params)if(query.has(spec.id))overrides[spec.id]=Number(query.get(spec.id));
   $('overrides').value=JSON.stringify(overrides);$('run').disabled=false;draw();await run();
 }catch(e){fail(e.message);}}

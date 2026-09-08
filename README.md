@@ -25,7 +25,7 @@ The viewer puts **all field controls in a horizontal top bar above the maps**, w
 
 Macro elevation is the initial view, with land hillshade, bathymetry colors, and sampled viewport land fraction. Pink coarse drainage cells mean unresolved within the search radius. Coarse rank/distance/direction describe the cell anchor, not the exact fine column, and are not yet carved rivers.
 
-Use **Open finite hydrology reference** above the main map, or open [the hydrology laboratory](http://127.0.0.1:8787/hydrology.html). Its eight diagnostic layers stay in a horizontal top bar. Analyze a fixed region, inspect downstream paths, adjust the runoff overlay, and export the exact result/configuration as JSON. All edge cells are declared outlets; boundary-connected water is explicitly not called globally proven ocean.
+Use **Open finite hydrology reference** above the main map, or open [the hydrology laboratory](http://127.0.0.1:8787/hydrology.html). Its nine diagnostic layers stay in a horizontal top bar. Compare connected-water terminals against artificial edge outlets, inspect downstream paths, audit quadrant water budgets, adjust the runoff overlay, and export the exact result/configuration as JSON. With no connected water, that policy shows unresolved drainage in pink instead of inventing mouths. Boundary-connected water is explicitly not called globally proven ocean.
 
 The Java 21 harness serves only on IPv4 loopback. The core is compiled with `--release 8`, uses strict floating-point evaluation, and has no Minecraft, HTTP, rendering, or third-party dependencies. That preserves a conservative bytecode target for eventual reuse; actual GTNH compatibility still requires M9 integration tests.
 

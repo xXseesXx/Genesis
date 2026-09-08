@@ -59,12 +59,14 @@ public final class Server {
             if (path.equals("/api/meta")) { send(exchange, 200, "application/json", bytes(metadata())); return; }
             if (path.startsWith("/api/")) {
                 Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
+                if (query.containsKey("outlets") && !path.equals("/api/hydrology"))
+                    throw new IllegalArgumentException("outlets is a finite hydrology option, not a world parameter");
                 Generator generator = generator(query);
                 long x = number(query, "x", -16384), z = number(query, "z", -16384);
                 if (path.equals("/api/hydrology")) {
                     if (query.containsKey("layers")) throw new IllegalArgumentException("Analysis returns all reference fields; layers is not accepted");
                     String result = HydrologyAnalysis.json(generator, x, z, number(query, "step", 1024),
-                        Math.toIntExact(number(query, "width", 128)), Math.toIntExact(number(query, "height", 128)));
+                        Math.toIntExact(number(query, "width", 128)), Math.toIntExact(number(query, "height", 128)), query.getOrDefault("outlets", "edges"));
                     send(exchange, 200, "application/json", bytes(result)); return;
                 }
                 if (path.equals("/api/sample")) {
@@ -99,7 +101,7 @@ public final class Server {
                 send(exchange, 404, "text/plain", bytes("Unknown endpoint")); return;
             }
             String file = switch (path) { case "/" -> "index.html"; case "/app.js" -> "app.js"; case "/style.css" -> "style.css";
-                case "/hydrology.html" -> "hydrology.html"; case "/hydrology.js" -> "hydrology.js"; default -> null; };
+                case "/hydrology.html" -> "hydrology.html"; case "/hydrology.js" -> "hydrology.js"; case "/hydrology.css" -> "hydrology.css"; default -> null; };
             if (file == null) { send(exchange, 404, "text/plain", bytes("Not found")); return; }
             String type = file.endsWith("html") ? "text/html; charset=utf-8" : file.endsWith("js") ? "text/javascript; charset=utf-8" : "text/css; charset=utf-8";
             send(exchange, 200, type, Files.readAllBytes(VIEWER.resolve(file)));
@@ -128,7 +130,7 @@ public final class Server {
             if (result.put(key, value) != null) throw new IllegalArgumentException("Duplicate query key: " + key);
         }
         for (String key : result.keySet())
-            if (!List.of("seed", "x", "z", "width", "height", "step", "layers").contains(key) && !Params.SPECS.containsKey(key))
+            if (!List.of("seed", "x", "z", "width", "height", "step", "layers", "outlets").contains(key) && !Params.SPECS.containsKey(key))
                 throw new IllegalArgumentException("Unknown query key: " + key);
         return result;
     }
