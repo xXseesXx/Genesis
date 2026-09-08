@@ -31,4 +31,5 @@ jobs:
             build/conservative-runoff.json
             build/maritime-envelope.json
             build/maritime-object-admission.json
+            build/authored-landmass.json
             build/genesis-core.jar

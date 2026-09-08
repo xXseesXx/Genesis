@@ -1,5 +1,9 @@
 # Reference oracles
 
+## Authored-land research experiment
+
+`src/genesis/oracle/AuthoredLandmass.java` grows connected coarse land inside a complete canonical maritime domain and classifies water by explicit reserve connection. Its positive-cost growth tree is not a river network. [Contracts and results](../research/authored-landmass-experiment.md) cover exact coverage, independent connectivity checks and unaccepted geographic restrictions. Production fields are unchanged.
+
 ## Maritime-domain research experiment
 
 `src/genesis/oracle/MaritimeEnvelope.java` tests bounded jittered-Voronoi ownership and an exact integer ocean-clearance restriction. It is not a production coast or basin generator. [Candidate comparison and evidence](../research/root-terminal-design.md) document the 25-site support argument, finite domain box, continuous-ocean reasoning, remaining discrete terminal obligations, and the visible land loss caused by late clipping. The clipped candidate mask has not been adopted.

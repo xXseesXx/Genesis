@@ -135,3 +135,7 @@ These are crop-limited sampled components, not globally identified continents or
 5. Only after selecting a geographic contract, implement A's bounded coarse solve and B's constructive watershed alternative on matched forcing/terminal fixtures in R3. Measure full cold construction and retained-port work, not just the 25-site lookup.
 
 R2 remains open until these choices and contracts are sufficiently complete. R2a is a tested feasibility/cost result, not a replacement for R3's end-to-end watershed proof.
+
+### Subsequent R2b positive fixture
+
+[Authored connected land](authored-landmass-experiment.md) now constructs a connected growth prefix inside the safe domain instead of clipping/rejecting old objects. Ten tested configurations preserve exact connected coverage and independently verified reserve-connected water classification. Main seed42 fixture grows from 1686 to 2741 connected samples at 40/65 percent. This is a separate canonical coarse realization, not preservation of the old coast. Its one-landmass-per-domain assumption, single-scale bias, lack of physical elevation/drainage and full-root numeric-halo limits remain explicit. R2 is still open; the fixture can support bounded routing research without silently promoting its geography.
