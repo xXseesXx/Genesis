@@ -57,6 +57,7 @@ public final class Server {
         try {
             if (!exchange.getRequestMethod().equals("GET")) { send(exchange, 405, "text/plain", bytes("GET only")); return; }
             String path = exchange.getRequestURI().getPath();
+            if (path.startsWith("/api/tectonic/")) { TectonicView.handle(exchange); return; }
             if (path.equals("/api/meta")) { send(exchange, 200, "application/json", bytes(metadata(model(query(exchange.getRequestURI().getRawQuery(), false))))); return; }
             if (path.startsWith("/api/")) {
                 boolean refinement = path.equals("/api/refinement") || path.equals("/api/refinement.png");
@@ -115,6 +116,7 @@ public final class Server {
             }
             String file = switch (path) { case "/" -> "index.html"; case "/app.js" -> "app.js"; case "/style.css" -> "style.css";
                 case "/continents.html" -> "continents.html";
+                case "/tectonics.html" -> "tectonics.html"; case "/tectonics.js" -> "tectonics.js"; case "/tectonics.css" -> "tectonics.css";
                 case "/hydrology.html" -> "hydrology.html"; case "/hydrology.js" -> "hydrology.js"; case "/hydrology.css" -> "hydrology.css";
                 case "/refinement.html" -> "refinement.html"; case "/refinement.js" -> "refinement.js"; case "/refinement.css" -> "refinement.css"; default -> null; };
             if (file == null) { send(exchange, 404, "text/plain", bytes("Not found")); return; }
@@ -184,7 +186,7 @@ public final class Server {
         return result.append("]}").toString();
     }
     private static byte[] bytes(String s) { return s.getBytes(StandardCharsets.UTF_8); }
-    private static String quote(String s) {
+    static String quote(String s) {
         StringBuilder out = new StringBuilder("\"");
         for (char c : s.toCharArray()) {
             if (c == '"' || c == '\\') out.append('\\').append(c);
@@ -193,7 +195,7 @@ public final class Server {
         }
         return out.append('"').toString();
     }
-    private static void send(HttpExchange exchange, int status, String type, byte[] data) throws IOException {
+    static void send(HttpExchange exchange, int status, String type, byte[] data) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", type);
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");

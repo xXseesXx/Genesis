@@ -14,6 +14,7 @@ Research records distinguish established results, mathematical reasoning, design
 - [Crest-preserving fine mesh](crest-mesh-experiment.md): one triangulated refinement preserves coarse spill levels under D8 routing and introduces no extra runoff. It does not yet preserve every river receiver or outlet share.
 - [Shared soft plate junctions](junction-forcing-experiment.md): bounded multi-plate anomaly with no winning-profile switch, larger-support and exact-output checks; convex blending can still invalidate a drainage divide. Next: broad continental elevation and an experimental tectonic viewer.
 - [Tectonic absolute terrain](tectonic-terrain-experiment.md): correlated crust provinces feed both broad elevation and boundary forcing; six wide-area samples yield51.4-53.9% land at fixed sea level. This candidate is ready for an exploratory viewer, not final geography or hydrology.
+- [Tectonic viewer contracts](../docs/Tectonic-Viewer.md): separate Java21 candidate page/API with17 top-bar fields, exact configuration/inspection, navigation/export and integration checks. No misleading global river overlay; browser visual QA remains outstanding.
 - [Active roadmap](../docs/Active-Roadmap.md): implementation order and acceptance criteria informed by this research.
 
 The original [development proposal](../Dev-Roadmap.md) and [concept notes](../warning_half_baked_concepts.md) remain preserved. Research changes the active execution plan, not the historical record.

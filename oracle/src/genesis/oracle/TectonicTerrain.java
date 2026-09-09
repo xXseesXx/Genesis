@@ -44,7 +44,7 @@ public final class TectonicTerrain {
         this.seed=seed;this.plateParams=params;this.settings=settings;topology=new PlateTopology(seed,params);
         transformRatio=params.integer("transformRatio");
         provinces=new CrustProvinces(seed,topology.spacing*settings.crustProvinceScale,params.integer("continentalPercent"));
-        detail=new Noise(Hash64.stream(seed,0x5445434445544149L),new Params(Map.of("wavelength",topology.spacing/8.0,"octaves",4.0)));
+        detail=new Noise(Hash64.stream(seed,0x5445434445544149L),new Params(Map.of("wavelength",(double)(topology.spacing/8),"octaves",4.0)));
     }
     public Sample sample(long x,long z) {
         Lattice.check(x);Lattice.check(z);long i=Lattice.cell(x,topology.spacing),j=Lattice.cell(z,topology.spacing);
@@ -70,6 +70,15 @@ public final class TectonicTerrain {
     public Plate plate(long i,long j) {
         var s=topology.site(i,j);int crust=settings.crustProvinceScale==1?s.crust:provinces.sample(s.x,s.z).crust();
         return new Plate(s.id,s.x,s.z,s.vx,s.vz,crust,s.age);
+    }
+    /** Closest-boundary diagnostic with candidate crust, not a selector for composed height. */
+    public BoundaryForcing.Sample boundary(long x,long z) {
+        var s=topology.sample(x,z);var edge=BoundaryForcing.describe(plate(s.owner.i,s.owner.j),plate(s.neighbor.i,s.neighbor.j),transformRatio);
+        long dx=edge.second().x()-edge.first().x(),dz=edge.second().z()-edge.first().z();
+        double length=StrictMath.sqrt(dx*dx+dz*dz);
+        long projection=(2*(x-edge.first().x())-dx)*dx+(2*(z-edge.first().z())-dz)*dz;
+        int u=(int)Math.max(-1000,Math.min(1000,projection*1000/(2*length*(topology.spacing/4.0))));
+        return new BoundaryForcing.Sample(edge,u,BoundaryForcing.anomaly(edge,u));
     }
     private synchronized List<Plate> neighborhood(long i,long j) {
         long key=PlateTopology.key(i,j);var found=cache.get(key);if(found!=null)return found;

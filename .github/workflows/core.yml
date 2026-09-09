@@ -20,6 +20,32 @@ jobs:
       - name: Compile Java 8 core and run standalone gates
         shell: pwsh
         run: ./genesis.ps1 test
+      - name: Tectonic viewer application-logic contracts
+        shell: pwsh
+        run: |
+          $launch = @{
+            FilePath = 'java'
+            ArgumentList = @('-Djava.awt.headless=true', '-cp', 'build/classes', 'genesis.harness.Server', '8790')
+            RedirectStandardOutput = 'build/tectonic-ci-server.out.log'
+            RedirectStandardError = 'build/tectonic-ci-server.err.log'
+            PassThru = $true
+          }
+          if ($IsWindows) { $launch.WindowStyle = 'Hidden' }
+          $viewerProcess = Start-Process @launch
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 40; $attempt++) {
+              try {
+                $response = Invoke-WebRequest 'http://127.0.0.1:8790/api/tectonic/meta'
+                if ($response.StatusCode -eq 200) { $ready = $true; break }
+              } catch { Start-Sleep -Milliseconds 100 }
+            }
+            if (-not $ready) { throw 'Tectonic viewer test server did not start' }
+            node harness/gates/tectonic-viewer-contracts.cjs http://127.0.0.1:8790
+            if ($LASTEXITCODE -ne 0) { throw 'Tectonic viewer application-logic contracts failed' }
+          } finally {
+            if (-not $viewerProcess.HasExited) { Stop-Process -Id $viewerProcess.Id }
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -38,5 +64,7 @@ jobs:
             build/boundary-forcing.json
             build/junction-forcing.json
             build/tectonic-terrain.json
+            build/tectonic-viewer.json
+            build/tectonic-ci-server.*.log
             build/crest-mesh.json
             build/genesis-core.jar
