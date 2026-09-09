@@ -35,4 +35,5 @@ jobs:
             build/authored-mosaic.json
             build/mixed-boundary.json
             build/paired-drainage.json
+            build/boundary-forcing.json
             build/genesis-core.jar

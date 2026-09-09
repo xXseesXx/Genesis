@@ -10,6 +10,7 @@ Research records distinguish established results, mathematical reasoning, design
 - [Adjoining-domain mosaics](authored-mosaic-experiment.md): twelve multi-domain/scale audits expose the cellular-ocean restriction; production layout rejected, with explicit active-domain drainage contracts for the next experiment.
 - [Mixed ridge/ocean boundaries](mixed-boundary-experiment.md): deterministic mutual-nearest ridge pairs, actual cross-cell land bridges and 53% total-area budgets; bounded topology fixture, not physically realized drainage divides.
 - [Active drainage and shared crests](paired-drainage-experiment.md): exact finite D4 saddle routing with masks/net runoff; unrestricted paired-cell solves match local solves, while a lowered pass exposes a cross-divide leak. Geological forcing and finer terrain remain separate next steps.
+- [Plate-vector boundary forcing](boundary-forcing-experiment.md): existing core motion/crust data drive shared collision, subduction and rift profiles; explicit speed tests and a forcing-induced drainage leak. Multi-edge junction composition and production terrain adoption remain pending.
 - [Active roadmap](../docs/Active-Roadmap.md): implementation order and acceptance criteria informed by this research.
 
 The original [development proposal](../Dev-Roadmap.md) and [concept notes](../warning_half_baked_concepts.md) remain preserved. Research changes the active execution plan, not the historical record.

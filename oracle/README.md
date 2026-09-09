@@ -18,6 +18,8 @@
 
 ## Implemented finite reference
 
+`BoundaryForcing` consumes the existing core plate vectors/crust/age and produces canonical shared motion descriptors and illustrative cross-boundary profiles. Tests cover relative motion and profile polarity, plus a rift-forced pass invalidating a drainage divide. Its closest-edge spatial sampling can have junction seams; it is not registered as production elevation. See [the forcing experiment](../research/boundary-forcing-experiment.md).
+
 `ActiveHydrology` adds a separate finite D4 graph oracle with excluded vertices, heterogeneous net runoff and explicit edge crests. It uses full minimax relaxation and exact source accumulation. Three actual mixed-boundary pair fixtures compare unrestricted union solves with independent interiors; lowering a test pass must expose a leak. See [paired drainage](../research/paired-drainage-experiment.md). The existing `FiniteHydrology` and viewer semantics are unchanged; graph saddles are not a fine terrain surface.
 
 `MixedBoundaryEnvelope` and `MixedBoundaryLandmass` add an R2c research fixture: mutual-nearest cells share ridge land while other faces remain ocean-facing. Canonical whole-cell budgets target 53% total land area; shared junctions, actual bridges and water classification are tested. Ridge strength is a constraint indicator, not elevation or a physical divide guarantee. The disjoint-pair restriction is not final continental geography. See [the experiment and next routing contracts](../research/mixed-boundary-experiment.md). These Java21-only classes are excluded from the core JAR and not called by viewer fields.
