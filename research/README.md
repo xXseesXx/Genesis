@@ -12,6 +12,7 @@ Research records distinguish established results, mathematical reasoning, design
 - [Active drainage and shared crests](paired-drainage-experiment.md): exact finite D4 saddle routing with masks/net runoff; unrestricted paired-cell solves match local solves, while a lowered pass exposes a cross-divide leak. Geological forcing and finer terrain remain separate next steps.
 - [Plate-vector boundary forcing](boundary-forcing-experiment.md): existing core motion/crust data drive shared collision, subduction and rift profiles; explicit speed tests and a forcing-induced drainage leak. Multi-edge junction composition and production terrain adoption remain pending.
 - [Crest-preserving fine mesh](crest-mesh-experiment.md): one triangulated refinement preserves coarse spill levels under D8 routing and introduces no extra runoff. It does not yet preserve every river receiver or outlet share.
+- [Shared soft plate junctions](junction-forcing-experiment.md): bounded multi-plate anomaly with no winning-profile switch, larger-support and exact-output checks; convex blending can still invalidate a drainage divide. Next: broad continental elevation and an experimental tectonic viewer.
 - [Active roadmap](../docs/Active-Roadmap.md): implementation order and acceptance criteria informed by this research.
 
 The original [development proposal](../Dev-Roadmap.md) and [concept notes](../warning_half_baked_concepts.md) remain preserved. Research changes the active execution plan, not the historical record.

@@ -18,6 +18,8 @@
 
 ## Implemented finite reference
 
+`JunctionForcing` composes existing plate-vector profiles with bounded soft multi-plate weights, avoiding the closest-profile selector. It exposes positive/negative net pair contributions and has 25-versus-121-site, independent reduction and exact-output checks. Convex blending can still lower a drainage divide; this is neither final elevation nor certified face geometry. See [the junction experiment and viewer-oriented next steps](../research/junction-forcing-experiment.md).
+
 `CrestMesh` realizes D4 edge crests as a one-step triangulated surface, with a D8 audit through `ActiveHydrology.solveD8Surface`. Independent tests preserve original spill levels/reachability and total source ledgers, not every receiver or outlet share. Added vertices have no new runoff. See [the mesh contract and limitations](../research/crest-mesh-experiment.md).
 
 `BoundaryForcing` consumes the existing core plate vectors/crust/age and produces canonical shared motion descriptors and illustrative cross-boundary profiles. Tests cover relative motion and profile polarity, plus a rift-forced pass invalidating a drainage divide. Its closest-edge spatial sampling can have junction seams; it is not registered as production elevation. See [the forcing experiment](../research/boundary-forcing-experiment.md).
