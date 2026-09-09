@@ -2,6 +2,7 @@ package genesis.harness;
 
 import genesis.core.hash.Hash64;
 import genesis.oracle.ActiveHydrology;
+import genesis.oracle.CrestMesh;
 import genesis.oracle.MaritimeEnvelope.Key;
 import genesis.oracle.MixedBoundaryEnvelope;
 import genesis.oracle.MixedBoundaryLandmass;
@@ -68,6 +69,9 @@ final class PairedDrainageGates {
                 if(active[p]&&!term[p])check(full.filled(p)<600,"Lake overtops assumed divide");
             }
             check(full.unresolved==0&&full.discharged==combinedDischarge&&full.discharged==full.supplied,"Paired water ledger");
+            var mesh=new CrestMesh(w,h,bed,active,term,source,east,south);var fine=mesh.solve();
+            for(int p=0;p<n;p++)if(active[p])check(fine.filled(mesh.original(p))==full.filled(p),"Fine D8 surface changes paired spill levels");
+            check(fine.discharged==full.discharged&&fine.unresolved==0,"Fine paired surface loses water");
             var cold=ActiveHydrology.solve(w,h,bed,active,term,source,east,south);
             for(int p=n-1;p>=0;p-=7)check(full.downstream(p)==cold.downstream(p)&&full.flux(p)==cold.flux(p),"Cold/reverse-stride paired reads differ");
             if(!rows.isEmpty())rows.append(",\n");
@@ -83,6 +87,7 @@ final class PairedDrainageGates {
               "rawBedRange":[-12,228],
               "independentLocalUnionAgreement":true,
               "loweredPassCounterexampleDetected":true,
+              "fineD8CrestMeshOriginalSpillAgreement":true,
               "audits":[
             %s
               ]

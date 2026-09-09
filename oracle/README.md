@@ -18,6 +18,8 @@
 
 ## Implemented finite reference
 
+`CrestMesh` realizes D4 edge crests as a one-step triangulated surface, with a D8 audit through `ActiveHydrology.solveD8Surface`. Independent tests preserve original spill levels/reachability and total source ledgers, not every receiver or outlet share. Added vertices have no new runoff. See [the mesh contract and limitations](../research/crest-mesh-experiment.md).
+
 `BoundaryForcing` consumes the existing core plate vectors/crust/age and produces canonical shared motion descriptors and illustrative cross-boundary profiles. Tests cover relative motion and profile polarity, plus a rift-forced pass invalidating a drainage divide. Its closest-edge spatial sampling can have junction seams; it is not registered as production elevation. See [the forcing experiment](../research/boundary-forcing-experiment.md).
 
 `ActiveHydrology` adds a separate finite D4 graph oracle with excluded vertices, heterogeneous net runoff and explicit edge crests. It uses full minimax relaxation and exact source accumulation. Three actual mixed-boundary pair fixtures compare unrestricted union solves with independent interiors; lowering a test pass must expose a leak. See [paired drainage](../research/paired-drainage-experiment.md). The existing `FiniteHydrology` and viewer semantics are unchanged; graph saddles are not a fine terrain surface.

@@ -33,11 +33,21 @@ public final class ActiveHydrology {
      */
     public static Result solve(int width,int height,int[] terrain,boolean[] active,boolean[] terminals,long[] runoff,
                                int[] east,int[] south) {
+        return solveInternal(width,height,terrain,active,terminals,runoff,east,south,false);
+    }
+    /** D8 vertex-surface audit, including corner diagonals. No hidden edge crests or owner barriers.
+     * The caller must establish what these sampled connections mean on its actual surface.
+     */
+    public static Result solveD8Surface(int width,int height,int[] terrain,boolean[] active,boolean[] terminals,long[] runoff) {
+        return solveInternal(width,height,terrain,active,terminals,runoff,null,null,true);
+    }
+    private static Result solveInternal(int width,int height,int[] terrain,boolean[] active,boolean[] terminals,long[] runoff,
+                                        int[] east,int[] south,boolean diagonal) {
         long size=(long)width*height;
         if(width<1||height<1||size>1048576)throw new IllegalArgumentException("Finite grid must have 1..1048576 cells");
         int n=(int)size;
-        if(terrain==null||active==null||terminals==null||runoff==null||east==null||south==null
-            ||terrain.length!=n||active.length!=n||terminals.length!=n||runoff.length!=n||east.length!=n||south.length!=n)
+        if(terrain==null||active==null||terminals==null||runoff==null||(!diagonal&&(east==null||south==null))
+            ||terrain.length!=n||active.length!=n||terminals.length!=n||runoff.length!=n||(!diagonal&&(east.length!=n||south.length!=n)))
             throw new IllegalArgumentException("Mismatched finite inputs");
         int[] filled=new int[n],down=new int[n],order=new int[n],sequence=new int[n];
         Arrays.fill(down,-1);Arrays.fill(order,-1);
@@ -54,10 +64,12 @@ public final class ActiveHydrology {
             if(order[p]>=0||filled[p]!=entry.level)continue;
             order[p]=count;sequence[count++]=p;
             int x=p%width,z=p/width;
-            int[] neighbors={x>0?p-1:-1,x+1<width?p+1:-1,z>0?p-width:-1,z+1<height?p+width:-1};
+            int[] neighbors={x>0?p-1:-1,x+1<width?p+1:-1,z>0?p-width:-1,z+1<height?p+width:-1,
+                diagonal&&x>0&&z>0?p-width-1:-1,diagonal&&x+1<width&&z>0?p-width+1:-1,
+                diagonal&&x>0&&z+1<height?p+width-1:-1,diagonal&&x+1<width&&z+1<height?p+width+1:-1};
             for(int q:neighbors) {
                 if(q<0||!active[q]||terminals[q]||order[q]>=0)continue;
-                int crest=p/width==q/width?east[Math.min(p,q)]:south[Math.min(p,q)];
+                int crest=diagonal?Integer.MIN_VALUE:p/width==q/width?east[Math.min(p,q)]:south[Math.min(p,q)];
                 int candidate=Math.max(terrain[q],Math.max(filled[p],crest));
                 // Unlike vertex-only priority flood, arbitrary edge saddles require relaxation.
                 if(!reached[q]||candidate<filled[q]) {

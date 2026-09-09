@@ -36,4 +36,5 @@ jobs:
             build/mixed-boundary.json
             build/paired-drainage.json
             build/boundary-forcing.json
+            build/crest-mesh.json
             build/genesis-core.jar
