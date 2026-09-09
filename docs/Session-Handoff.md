@@ -52,6 +52,14 @@ Latest user priority: work toward a new tectonic generation viewer, not wait for
 
 Report `build/junction-forcing.json`; inspected code-generated `build/gallery/junction-forcing.png` compares closest-edge/new/support and two triple-junction sections. CI uploads report/gallery and checks exact fingerprint. Next: broad crustal/continental elevation recipe, fixed world-configuration sea-level policy and multi-seed continental extent/50-55% total-land assessment, THEN separate experimental tectonic viewer with top-bar fields. Do not imply viewer exists yet or attach old unresolved rivers to the new terrain. Full hydrological root/terminal and outlet-preserving refinement remain open in parallel. Keep old production viewer intact.
 
+## Absolute tectonic terrain checkpoint (2026-09-09)
+
+New Java21 `CrustProvinces` + `TectonicTerrain`, `TectonicTerrainGates`; read `research/tectonic-terrain-experiment.md`. Candidate preset S65536/continentalPercent53, Settings radius1500/threshold500/land1800/ocean4200/forcing1000/detail180/sea0/provinceScale4. Scale1 retains old independent crust negative baseline; its geography was sponge-like. Scale4 assigns each EXISTING plate a nearest4S province crust label; exact identity/position/velocity/age unchanged, candidate crust deliberately differs from legacy. Both compact crust interpolation and JunctionForcing use these same labels. Do not overlay legacy crust/regime diagnostics on candidate height.
+
+49-site compact continuous crust fraction -> asymmetric base height + domain-separated four-octave detail at S/8 tapered by signed crust score squared + signed junction forcing. Land iff composed height>fixed seaLevel; below-sea-level is NOT proven ocean. 64 immutable neighborhood LRU, bounded9-site province lookup per plate, no global precomputation. 540 larger-support/independent/cold cases;480 province reference cases; crop/concurrency/counterfactual/coast checks and exact fingerprint10dafe06b67a3c6a1dc165aff64a8d563e3df2af6cf04b5c7ae52fd14bd8141b.
+
+Six fixed wide-area audits (65536 jittered strata over256S) yield51.44-53.94% land, mean52.59%. Local32S regions vary35.88-57.20%. Sampled largest land spans20.125-32S and144-635 plate owners; crop cuts retained, no global component claim. Report `build/tectonic-terrain.json`; inspected gallery `tectonic-terrain.png`, `tectonic-terrain-layers.png`, `tectonic-crust-comparison.png`. Simple plateaus, straight active boundaries, single-scale crust coherence remain candidate limitations. Next separate tectonic viewer/API using this exact model with all controls top-bar and explicit unresolved global hydrology. No current viewer/production/core golden changes in terrain checkpoint.
+
 ## User requirements
 
 - Minecraft 1.7.10 / GTNH eventually, raw generation first. Follow `docs/Active-Roadmap.md`; preserve the historical `Dev-Roadmap.md` and concept notes. Do not overwrite this repository's Git metadata.

@@ -37,5 +37,6 @@ jobs:
             build/paired-drainage.json
             build/boundary-forcing.json
             build/junction-forcing.json
+            build/tectonic-terrain.json
             build/crest-mesh.json
             build/genesis-core.jar
