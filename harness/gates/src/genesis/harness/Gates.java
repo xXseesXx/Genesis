@@ -54,6 +54,8 @@ public final class Gates {
         AuthoredLandmassGates.run();
         AuthoredMosaicGates.run();
         MixedBoundaryGates.run();
+        ActiveHydrologyGates.run();
+        PairedDrainageGates.run();
         ChannelGates.run();
         RunoffGates.run();
         GeologyGates.run();
