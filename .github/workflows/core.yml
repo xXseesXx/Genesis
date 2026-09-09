@@ -33,4 +33,5 @@ jobs:
             build/maritime-object-admission.json
             build/authored-landmass.json
             build/authored-mosaic.json
+            build/mixed-boundary.json
             build/genesis-core.jar

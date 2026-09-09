@@ -18,6 +18,8 @@
 
 ## Implemented finite reference
 
+`MixedBoundaryEnvelope` and `MixedBoundaryLandmass` add an R2c research fixture: mutual-nearest cells share ridge land while other faces remain ocean-facing. Canonical whole-cell budgets target 53% total land area; shared junctions, actual bridges and water classification are tested. Ridge strength is a constraint indicator, not elevation or a physical divide guarantee. The disjoint-pair restriction is not final continental geography. See [the experiment and next routing contracts](../research/mixed-boundary-experiment.md). These Java21-only classes are excluded from the core JAR and not called by viewer fields.
+
 `src/genesis/oracle/FiniteHydrology.java` is a new Java 21, integer-only, finite D8 priority-flood reference. It is independent of `core/`, used only by tests and the local analysis harness, and excluded from the production core JAR. Run `../genesis.ps1 test` from this directory, or open the viewer's `/hydrology.html` page after starting the server. See [the boundary, numeric, tie and validation contracts](../docs/Finite-Hydrology.md).
 
 This is a whole-raster morphology/reference experiment with explicit terminals, not the original JS oracle and not a coarse-to-fine cascade equivalence check.
