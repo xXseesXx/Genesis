@@ -26,7 +26,7 @@ public final class TectonicGates {
         Set<Integer> kinds = new HashSet<>();
         double maxGradient = 0;
         for (long seed : new long[] {0, 1, -1, 42, Long.MIN_VALUE, Long.MAX_VALUE}) {
-            for (int spacing : new int[] {8192, 16384, 262144}) {
+            for (int spacing : new int[] {8192, 16384, 262144, 1048576}) {
                 Params params = new Params(Map.of("plateSpacing", (double) spacing));
                 PlateTopology topology = new PlateTopology(seed, params);
                 Generator g = new Generator(seed, params);

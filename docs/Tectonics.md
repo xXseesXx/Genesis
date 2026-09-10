@@ -21,7 +21,7 @@ Child Voronoi tessellations are seeded by the parent and clipped by querying the
 
 ## Bounded integer topology
 
-Each lattice cell contains one site in its central half. Position jitter uses integer hashes and floor-correct negative coordinates. Spacing is bounded to 8192–262144 blocks. With at most eight subdivisions, child keys remain within signed 32-bit component bounds over the supported ±2^40-block domain, including the search halo.
+Each lattice cell contains one site in its central half. Position jitter uses integer hashes and floor-correct negative coordinates. Spacing is bounded to 8192–1048576 blocks (expanded for the v2 experimental viewer; production defaults are unchanged). With at most eight subdivisions, child keys remain within signed 32-bit component bounds over the supported ±2^40-block domain, including the search halo.
 
 An owning site is within the query cell's 3×3 neighborhood: the home site's distance is at most approximately `sqrt(2) * 0.75 * spacing`, while an omitted site is at least approximately `1.25 * spacing` away. Integer squared distances select the nearest site. Equal distances use a hashed integer ordering with an exact-key fallback.
 
@@ -29,7 +29,7 @@ The distance to a Voronoi face is computed from the squared-distance difference 
 
 Distances use `Q=256` fixed point and an integer square root. Denominator rounding and final truncation make this a fixed-point approximation to geometric distance; the larger-window reference gate currently allows <0.02 block absolute error. Equal quantized distances use the same integer site ordering. Nearest-boundary association can change at interior bisectors and triple junctions; this is expected and does not change plate ownership.
 
-At the largest spacing, the largest face numerator and scaled squared separation stay below 2×10^17, well below signed-long overflow. Absolute world positions are subtracted before squaring. The tests compare the bounded query against an 11×11 geometric reference, including extreme world coordinates, maximum spacing, and synthetic regular-grid edges.
+At the expanded largest spacing, the largest face numerator and scaled squared separation stay below 3×10^18, below signed-long overflow. Absolute world positions are subtracted before squaring. The tests compare the bounded query against an 11×11 geometric reference, including extreme world coordinates, maximum spacing, and synthetic regular-grid edges.
 
 Boundary classification uses dot and cross products of integer relative velocity with the site separation vector. Reversing both plate order and the normal leaves classification unchanged. The transform threshold compares absolute normal and shear components using integer percentages; no floating-point comparison determines plate ownership or class.
 

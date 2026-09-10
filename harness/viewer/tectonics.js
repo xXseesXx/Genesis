@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d');
 const state={meta:null,seed:'42',params:{},x:-786432,z:-786432,step:4096,layer:'elevation',revision:0,completeRevision:0,committed:null,controller:null,inspectRevision:0,dirty:false};
-const LIMIT=2**40,INPUTS=['x','z','step','seed','layer'];
+const LIMIT=2**40,INPUTS=['x','z','step','seed','layer','version'];
 function error(message){$('error').textContent=message||'';$('error').hidden=!message;}
 function syncView(){if(!state.dirty){$('seed').value=state.seed;$('originX').value=state.x;$('originZ').value=state.z;$('step').value=state.step;}}
 function capture(){return {seed:state.seed,x:state.x,z:state.z,step:state.step,layer:state.layer,params:{...state.params}};}
@@ -24,7 +24,7 @@ async function render(){
     $('landFraction').textContent=(100*Number(response.headers.get('X-Land-Fraction'))).toFixed(2)+'% local land';
     $('timing').textContent=Number(response.headers.get('X-Render-Ms')).toFixed(0)+' ms generator + color rendering';
     $('coords').textContent=`x ${frame.x.toLocaleString()} · z ${frame.z.toLocaleString()} · ${frame.step.toLocaleString()} blocks / px`;
-    const saved=query(frame);saved.delete('width');saved.delete('height');history.replaceState(null,'','/tectonics.html?'+saved);
+    const saved=query(frame);saved.delete('width');saved.delete('height');saved.set('version',state.meta.version);history.replaceState(null,'','/tectonics.html?'+saved);
   }catch(e){if(e.name==='AbortError'||revision!==state.revision)return;error(e.message);$('renderState').textContent='Render failed — previous image is not the requested view';}
 }
 function apply(){
@@ -33,7 +33,6 @@ function apply(){
     const rawSeed=$('seed').value.trim();if(!/^-?\d+$/.test(rawSeed)||BigInt(rawSeed)<-(1n<<63n)||BigInt(rawSeed)>(1n<<63n)-1n)throw new Error('Seed must be an exact signed 64-bit integer.');const seed=BigInt(rawSeed).toString();
     const x=Number($('originX').value),z=Number($('originZ').value),step=Number($('step').value);if(!validView(x,z,step))throw new Error('Invalid view coordinates or step.');
     const params={};for(const s of state.meta.params){const value=Number($('p-'+s.id).value);if(!Number.isSafeInteger(value)||value<s.min||value>s.max)throw new Error('Invalid '+s.label);params[s.id]=value;}
-    if(![1,4].includes(params.crustProvinceScale))throw new Error('Crust grouping must be 1 or 4.');
     Object.assign(state,{seed,x,z,step,params,dirty:false});$('draftState').hidden=true;render();
   }catch(e){error(e.message);}
 }
@@ -58,13 +57,17 @@ canvas.addEventListener('wheel',e=>{e.preventDefault();const p=position(e);clear
 canvas.addEventListener('keydown',e=>{const moves={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};if(moves[e.key]){e.preventDefault();const [dx,dz]=moves[e.key];move(state.x+dx*48*state.step,state.z+dz*48*state.step,state.step);}else if(e.key==='+'||e.key==='='){e.preventDefault();zoom(.5);}else if(e.key==='-'){e.preventDefault();zoom(2);}});
 $('worldForm').addEventListener('submit',e=>{e.preventDefault();apply();});$('zoomIn').onclick=()=>zoom(.5);$('zoomOut').onclick=()=>zoom(2);
 $('worldForm').addEventListener('input',()=>{state.dirty=true;$('draftState').hidden=false;});
-$('overview').onclick=()=>{if(!state.meta)return;const step=Math.max(1,Math.round(state.params.plateSpacing/16));move(-canvas.width/2*step,-canvas.height/2*step,step);};
+$('overview').onclick=()=>{if(!state.meta)return;const step=Math.max(1,Math.round(state.params.plateSpacing*3/canvas.width));move(-canvas.width/2*step,-canvas.height/2*step,step);};
 $('reset').onclick=()=>{if(!state.meta)return;for(const s of state.meta.params)$('p-'+s.id).value=s.default;$('seed').value='42';$('originX').value=-786432;$('originZ').value=-786432;$('step').value=4096;apply();};
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 $('export').onclick=()=>{const c=state.committed;if(!c||state.completeRevision!==state.revision)return;const {blob,...config}=c;download(blob,`genesis-tectonic-${c.seed}-${c.layer}.png`);download(new Blob([JSON.stringify({model:state.meta.model,version:state.meta.version,...config,width:canvas.width,height:canvas.height,waterStatus:'not solved'},null,2)],{type:'application/json'}),'genesis-tectonic-config.json');};
 async function init(){
   try{const response=await fetch('/api/tectonic/meta');if(!response.ok)throw new Error('Tectonic API unavailable. Restart the updated local server.');state.meta=await response.json();
-    const url=new URLSearchParams(location.search);for(const key of url.keys())if(!INPUTS.includes(key)&&!state.meta.params.some(p=>p.id===key))throw new Error('Unknown saved configuration key: '+key);
+    const url=new URLSearchParams(location.search),legacy=['crustProvinceScale','crustRadiusPermille'];
+    const upgrade=legacy.some(k=>url.has(k))||url.get('version')==='tectonic-terrain-v1';
+    for(const key of url.keys())if(!INPUTS.includes(key)&&!state.meta.params.some(p=>p.id===key)&&!(upgrade&&legacy.includes(key)))throw new Error('Unknown saved configuration key: '+key);
+    if(upgrade){for(const s of state.meta.params)url.delete(s.id);for(const key of legacy)url.delete(key);url.delete('version');$('upgradeNotice').hidden=false;}
+    if(url.has('version')&&url.get('version')!==state.meta.version)throw new Error('This saved world uses another generator version. Open /tectonics.html for the current preset.');
     for(const s of state.meta.params){const label=document.createElement('label'),input=document.createElement('input');label.textContent=s.label;input.id='p-'+s.id;input.type='number';input.min=s.min;input.max=s.max;input.step=s.step;input.value=url.get(s.id)??s.default;label.append(input);$('params').append(label);}
     for(const f of state.meta.fields){const b=document.createElement('button');b.type='button';b.textContent=f.label;b.title=f.description;b.dataset.field=f.id;b.onclick=()=>{state.layer=f.id;render();};$('layers').append(b);}
     state.layer=url.get('layer')||'elevation';if(!state.meta.fields.some(f=>f.id===state.layer))throw new Error('Unknown saved field.');

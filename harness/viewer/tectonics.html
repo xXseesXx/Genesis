@@ -2,22 +2,23 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Genesis · Tectonic terrain</title><link rel="stylesheet" href="/tectonics.css"></head>
 <body>
-<header><a class="brand" href="/">G <span>GENESIS</span></a><div><h1>Tectonic terrain laboratory</h1><p>Correlated crust · shared plate motion · one absolute surface</p></div><span class="badge">EXPERIMENTAL</span></header>
+<header><a class="brand" href="/">G <span>GENESIS</span></a><div><h1>Tectonic terrain laboratory</h1><p>Sparse irregular plates · bounded continents · one absolute surface</p></div><span class="badge">EXPERIMENTAL</span></header>
 <main>
   <nav class="links"><a href="/">Original laboratory</a><a href="/continents.html">Previous continental model</a><span id="version">Connecting to the local generator…</span></nav>
   <section class="notice"><strong>A new terrain candidate, not finished world generation.</strong> Land follows height at a fixed sea level. Blue areas are low terrain, not proven ocean. Global rivers, erosion and geological histories remain unresolved.</section>
+  <p id="upgradeNotice" class="notice" hidden>This link used the previous plate generator. The new sparse-plate preset is loaded, preserving your seed and map location. Saved terrain from the previous version will look different.</p>
   <form id="worldForm">
     <div class="world-bar"><label>Seed <input id="seed" value="42" inputmode="numeric" spellcheck="false" aria-label="World seed"></label><label>Origin X <input id="originX" type="number" value="-786432" step="1"></label><label>Origin Z <input id="originZ" type="number" value="-786432" step="1"></label><label>Blocks / pixel <input id="step" type="number" min="1" max="1048576" value="4096" step="1"></label><button type="submit" id="apply">Apply world</button><button type="button" id="reset">Reset preset</button></div>
     <p id="draftState" class="hint" hidden>Edited inputs are not applied. Choose Apply world to render them.</p>
-    <details><summary>World parameters <span>Changing these creates a different world configuration</span></summary><div id="params" class="parameter-grid"></div><p class="hint">Province scale 4 correlates neighboring plates; 1 is the independent-crust comparison. Province probability is not an exact land percentage. The land target was screened across large regions, not enforced per view.</p></details>
+    <details><summary>World parameters <span>Changing these creates a different world configuration</span></summary><div id="params" class="parameter-grid"></div><p class="hint">Continental bodies contain 1–4 plates by construction, with single-plate bodies most common. The 53% land target is screened over fixed wide regions, never enforced per viewport.</p></details>
   </form>
-  <section class="field-bar" aria-label="Tectonic field layers"><div class="section-label">FIELD LAYERS <span>All fields use this candidate’s crust assignment</span></div><div id="layers" role="group" aria-label="Choose a field"></div></section>
+  <section class="field-bar" aria-label="Tectonic field layers"><div class="section-label">FIELD LAYERS <span>Plate shape, continent, motion, datum and tilt share one candidate</span></div><div id="layers" role="group" aria-label="Choose a field"></div></section>
   <div class="map-toolbar"><div><h2 id="fieldTitle">Terrain</h2><p id="legend">Waiting for field metadata</p></div><div class="buttons"><button id="overview">Overview</button><button id="zoomOut" aria-label="Zoom out">−</button><button id="zoomIn" aria-label="Zoom in">+</button><button id="export" disabled>Export PNG + config</button></div></div>
   <div id="error" role="alert" hidden></div>
   <section class="workspace">
     <figure><div class="canvas-wrap"><canvas id="map" width="384" height="384" tabindex="0" aria-label="Tectonic terrain map. Drag to pan; scroll to zoom; click to inspect. Arrow keys pan; plus and minus zoom."></canvas><span id="renderState" role="status">Loading terrain…</span></div><figcaption><span id="coords">World coordinates</span><span>Drag to pan · scroll to zoom · click to inspect</span></figcaption></figure>
     <aside><section><h3>Visible region</h3><strong id="landFraction">—</strong><p id="timing">Waiting for the generator</p><p class="hint">This is a local sampled land fraction, not a promise that every region contains 50–55% land. Colors use fixed scales, never viewport normalization.</p></section><section><h3>Coordinate inspector</h3><p id="inspectCoords">Click the map to inspect all fields.</p><dl id="inspection"></dl></section><section class="notes"><h3>Reading the layers</h3><p>Terrain = crustal base + small detail + positive and negative boundary relief.</p><p>Compression is positive when plates converge. Boundary regime is a closest-pair diagnostic; the height combines several pairs around junctions.</p><p>Regimes: gray quiet · brown collision · purple subduction · teal continental rift · blue spreading · green mixed rift · gold transform.</p><p>Plate IDs and seeds stay exact signed 64-bit integers. Coordinates and fields do not depend on the displayed crop.</p></section></aside>
   </section>
-  <footer>Standalone Java21 research viewer · Existing production models unchanged · No Minecraft integration</footer>
+  <footer>Standalone Java21 research viewer · Infinite coordinate-local decisions · Existing production models unchanged · No Minecraft integration</footer>
 </main><script src="/tectonics.js"></script>
 </body></html>

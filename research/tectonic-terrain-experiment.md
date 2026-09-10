@@ -2,6 +2,8 @@
 
 Date: 2026-09-09. Versions: `tectonic-terrain-v1`, `crust-provinces-v1`. Java21 reference candidate for a separate tectonic viewer. Not production terrain, certified ocean, infinite-world hydrology or a geological time simulation.
 
+Historical v1 record. The viewer now uses [v2 sparse irregular plates](sparse-irregular-plates.md), following the user's request for usually one and at most five plates per continent. The v1 implementation and gates remain recoverable at Git commit `04943b2`; the measurements below describe that version.
+
 ## What changed and why
 
 The first elevation recipe interpolated existing independent binary plate-crust labels and combined them with the shared junction forcing. Its six 32-plate-wide samples averaged 54.73% land, but the inspected image was sponge-like: many plate-sized water pockets inside a large connected land network. Reaching a percentage and having a large connected component are not enough to establish continental morphology.

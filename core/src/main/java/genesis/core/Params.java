@@ -25,7 +25,7 @@ public final class Params {
         add(specs, new Spec("persistence", 0.5, 0.05, 0.95, 0.01, false, "Amplitude retained per octave"));
         add(specs, new Spec("lacunarity", 2, 2, 4, 1, true, "Integer frequency multiplier per octave"));
         add(specs, new Spec("amplitude", 1, 0.1, 2, 0.05, false, "Output amplitude (not terrain elevation)"));
-        add(specs, new Spec("plateSpacing", 16384, 8192, 262144, 4096, true, "Mean tectonic plate spacing in blocks"));
+        add(specs, new Spec("plateSpacing", 16384, 8192, 1048576, 4096, true, "Mean tectonic plate spacing in blocks"));
         add(specs, new Spec("plateJitter", 50, 0, 50, 1, true, "Site jitter as percent of cell width; capped for bounded queries"));
         add(specs, new Spec("subdivisions", 4, 2, 8, 1, true, "Sub-plate lattice divisions per parent spacing"));
         add(specs, new Spec("plateSpeed", 64, 1, 128, 1, true, "Maximum absolute plate velocity component in model units"));

@@ -40,7 +40,7 @@ final class TectonicViewGates {
             String point="seed=-9223372036854775808&x="+Lattice.MAX_COORDINATE+"&z="+(-Lattice.MAX_COORDINATE)+"&width=1&height=1";
             var pointRequest=TectonicView.request(TectonicView.query(point));var response=get(client,base,"/api/tectonic/sample?"+point);
             check(response.statusCode()==200&&text(response).equals(TectonicView.sampleJson(pointRequest)),"Extreme inspector differs from direct model");
-            check(text(response).contains("\"seed\":\"-9223372036854775808\"")&&text(response).contains("\"plateId\":\""),"64-bit values converted to JSON doubles");
+            check(text(response).contains("\"seed\":\"-9223372036854775808\"")&&text(response).contains("\"plateId\":\"")&&text(response).contains("\"continentId\":\""),"64-bit values converted to JSON doubles");
             // Same world points reached through different windows and common-point zoom.
             for(var layer:TectonicView.Layer.values()) {
                 String suffix="&seed=42&layer="+layer;
@@ -48,7 +48,7 @@ final class TectonicViewGates {
                 var b=ImageIO.read(new ByteArrayInputStream(get(client,base,"/api/tectonic/render?x=-6144&z=-6144&step=2048&width=3&height=3"+suffix).body()));
                 for(int z=0;z<3;z++)for(int x=0;x<3;x++)check(a.getRGB(x*2+2,z*2+2)==b.getRGB(x,z),"Field depends on viewport/zoom: "+layer);
             }
-            for(String bad:new String[]{"seed=1&seed=2","seed=9223372036854775808","noise=1","model=continental","layer=noise","crustProvinceScale=2","seaLevel=NaN","width=513","height=0","step=0","x="+Lattice.MAX_COORDINATE+"&width=2","plateSpeed=129"})
+            for(String bad:new String[]{"seed=1&seed=2","seed=9223372036854775808","noise=1","model=continental","layer=noise","crustProvinceScale=2","plateWarpPermille=301","plateRoughnessPermille=201","seaLevel=NaN","width=513","height=0","step=0","x="+Lattice.MAX_COORDINATE+"&width=2","plateSpeed=129"})
                 check(get(client,base,"/api/tectonic/render?"+bad).statusCode()==400,"Invalid tectonic query accepted: "+bad);
             check(get(client,base,"/api/tectonic/unknown").statusCode()==404,"Unknown tectonic route accepted");
             check(get(client,base,"/api/tectonic/sample?width=0").statusCode()==400,"Point endpoint ignored invalid dimensions");
@@ -57,8 +57,8 @@ final class TectonicViewGates {
             // Inspect a representative API-produced image independently of browser availability.
             var png=get(client,base,"/api/tectonic/render?width=384&height=384");check(png.statusCode()==200,"Default viewer raster failed");
             Files.createDirectories(Path.of("build/gallery"));Files.write(Path.of("build/gallery/tectonic-viewer-terrain.png"),png.body());
-            Files.writeString(Path.of("build/tectonic-viewer.json"),"{\"model\":\"tectonic-experimental\",\"layers\":17,\"httpDirectAgreement\":true,\"cropZoomAgreement\":true,\"browserVisualCheck\":\"not provided by this gate\"}\n");
+            Files.writeString(Path.of("build/tectonic-viewer.json"),"{\"model\":\"tectonic-experimental\",\"layers\":26,\"httpDirectAgreement\":true,\"cropZoomAgreement\":true,\"browserVisualCheck\":\"not provided by this gate\"}\n");
         }
-        System.out.println("PASS TECTONIC VIEW: 17 candidate layers HTTP/direct/crop/zoom; exact inspector/configuration, invalid requests, assets and code-rendered default view; NOT browser layout QA");
+        System.out.println("PASS TECTONIC VIEW: 26 candidate layers HTTP/direct/crop/zoom; exact inspector/configuration, invalid requests, assets and code-rendered default view; NOT browser layout QA");
     }
 }
