@@ -71,6 +71,14 @@ public final class IrregularPlates {
     }
 
     public Sample sample(long x,long z){return sample(x,z,3);}
+    /** Cheap conservative rejection for a finite family. False means it cannot own this point. */
+    public boolean mayOwn(List<ContinentalGroups.Cell> family,long x,long z) {
+        Lattice.check(x);Lattice.check(z);long amplitude=(long)spacing*warpPermille/1000;
+        long wx=x+Math.round(warpX.sample(x,z)*amplitude),wz=z+Math.round(warpZ.sample(x,z)*amplitude);
+        long homeScore=score(site(Math.floorDiv(x,spacing),Math.floorDiv(z,spacing)),wx,wz,x,z);
+        for(var cell:family)if(score(site(cell.i(),cell.j()),wx,wz,x,z)<=homeScore)return true;
+        return false;
+    }
     /** Larger radii are exposed only for completeness tests of the fixed support. */
     public Sample sample(long x,long z,int radius) {
         Lattice.check(x);Lattice.check(z);if(radius<3||radius>5)throw new IllegalArgumentException("Plate support radius must be 3..5");

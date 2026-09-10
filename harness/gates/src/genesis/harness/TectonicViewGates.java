@@ -71,8 +71,29 @@ final class TectonicViewGates {
             Files.createDirectories(Path.of("build/gallery"));Files.write(Path.of("build/gallery/tectonic-viewer-terrain.png"),png.body());
             Files.write(Path.of("build/gallery/tectonic-viewer-height.png"),get(client,base,"/api/tectonic/render?layer=heightMap&width=384&height=384").body());
             Files.write(Path.of("build/gallery/tectonic-viewer-mountains.png"),get(client,base,"/api/tectonic/render?layer=heightMap&x=4233969&z=3211581&step=1024&width=384&height=384&contourInterval=25").body());
-            Files.writeString(Path.of("build/tectonic-viewer.json"),"{\"model\":\"tectonic-experimental\",\"layers\":27,\"httpDirectAgreement\":true,\"unadornedCropZoomAgreement\":true,\"contourCropAgreement\":true,\"browserVisualCheck\":\"not provided by this gate\"}\n");
+            var rivers=get(client,base,"/api/tectonic/render?layer=riverMap&width=384&height=384");check(rivers.statusCode()==200,"Default continent river map failed");Files.write(Path.of("build/gallery/tectonic-rivers.png"),rivers.body());
+            Files.write(Path.of("build/gallery/tectonic-rivers-detail.png"),get(client,base,"/api/tectonic/render?layer=riverMap&x=-786432&z=-786432&step=2048&width=384&height=384").body());
+            check(text(get(client,base,"/api/tectonic/sample?x=-524288&z=-524288")).contains("\"hydrologyVersion\":\"continental-hydrology-v1\""),"Inspector missing drainage version");
+            check(get(client,base,"/api/tectonic/render?layer=riverMap&width=50&height=50&step=1048576").statusCode()==400,"Oversized hydrology solve accepted");
+            check(get(client,base,"/api/tectonic/render?rainfallMm=10001&width=1&height=1").statusCode()==400,"Invalid rainfall accepted");
+            var riverRequest=TectonicView.request(Map.of());var riverRoot=riverRequest.hydro().root(riverRequest.world().continent(-1,-1));int mouth=-1;
+            for(int p=0;p<riverRoot.size();p++)if(riverRoot.status(p)==1&&(mouth<0||riverRoot.flux(p)>riverRoot.flux(mouth)))mouth=p;
+            check(mouth>=0&&riverRoot.flux(mouth)>0,"Missing nonzero river fixture");long mx=riverRoot.x(mouth),mz=riverRoot.z(mouth),hs=riverRoot.step;
+            String location="x="+(mx-2*hs)+"&z="+(mz-2*hs)+"&step="+(hs/2)+"&width=9&height=9";
+            for(String field:new String[]{"riverMap","runoff","lakeDepth","waterSurface","drainageStatus"}) {
+                var large=ImageIO.read(new ByteArrayInputStream(get(client,base,"/api/tectonic/render?"+location+"&layer="+field).body()));
+                var sub=ImageIO.read(new ByteArrayInputStream(get(client,base,"/api/tectonic/render?x="+(mx-hs)+"&z="+(mz-hs)+"&step="+hs+"&width=3&height=3&layer="+field).body()));
+                for(int z=0;z<3;z++)for(int x=0;x<3;x++)check(large.getRGB(2+x*2,2+z*2)==sub.getRGB(x,z),"Actual nonzero river changes with crop/zoom: "+field);
+                if(field.equals("riverMap")) {
+                    var dry=ImageIO.read(new ByteArrayInputStream(get(client,base,"/api/tectonic/render?"+location+"&layer=riverMap&rainfallMm=0").body()));
+                    check(dry.getRGB(4,4)!=large.getRGB(4,4),"Rainfall zero did not remove the river overlay");
+                }
+            }
+            var wetPoint=text(get(client,base,"/api/tectonic/sample?x="+mx+"&z="+mz));check(wetPoint.contains("\"flux\":\""+riverRoot.flux(mouth)+"\""),"Exact large river flux lost in JSON");
+            var unsupported=text(get(client,base,"/api/tectonic/sample?x="+Lattice.MAX_COORDINATE+"&z="+Lattice.MAX_COORDINATE));
+            check(unsupported.contains("\"waterSurface\":null")&&unsupported.contains("\"hydrology\":{\"status\":0"),"Numeric guard became a drainage outlet");
+            Files.writeString(Path.of("build/tectonic-viewer.json"),"{\"model\":\"tectonic-experimental\",\"layers\":33,\"httpDirectAgreement\":true,\"unadornedCropZoomAgreement\":true,\"contourCropAgreement\":true,\"continentalRivers\":true,\"browserVisualCheck\":\"not provided by this gate\"}\n");
         }
-        System.out.println("PASS TECTONIC VIEW: 27 candidate layers HTTP/direct/crop/zoom; contour halo/LOD/5m checks; exact inspector/configuration, invalid requests, code-rendered views; NOT browser layout QA");
+        System.out.println("PASS TECTONIC VIEW: 33 candidate layers HTTP/direct/crop/zoom; continent river support/limits/rainfall; contour halo/LOD; exact inspector/configuration; code-rendered views; NOT browser layout QA");
     }
 }

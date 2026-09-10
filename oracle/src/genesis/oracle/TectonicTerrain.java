@@ -91,6 +91,7 @@ public final class TectonicTerrain {
         return site.plate(continental(site,candidates,site.x(),site.z(),false).rawSigned>=0?1:0);
     }
     public Group continent(long i,long j){return groups.group(i,j);}
+    public boolean mayBelong(Group group,long x,long z){return plates.mayOwn(group.members(),x,z);}
 
     private PlateResponse.Response response(Site site) {
         synchronized(responses) {

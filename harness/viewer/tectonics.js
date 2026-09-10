@@ -1,10 +1,10 @@
 'use strict';
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d');
 const state={meta:null,seed:'42',params:{},x:-786432,z:-786432,step:4096,layer:'elevation',contourInterval:25,revision:0,completeRevision:0,committed:null,controller:null,inspectRevision:0,dirty:false};
-const LIMIT=2**40,INPUTS=['x','z','step','seed','layer','version','contourInterval'];
+const LIMIT=2**40,INPUTS=['x','z','step','seed','layer','version','hydrologyVersion','contourInterval'];
 function error(message){$('error').textContent=message||'';$('error').hidden=!message;}
 function syncView(){if(!state.dirty){$('seed').value=state.seed;$('originX').value=state.x;$('originZ').value=state.z;$('step').value=state.step;}}
-function capture(){return {seed:state.seed,x:state.x,z:state.z,step:state.step,layer:state.layer,contourInterval:state.contourInterval,params:{...state.params}};}
+function capture(){return {seed:state.seed,x:state.x,z:state.z,step:state.step,layer:state.layer,contourInterval:state.contourInterval,hydrologyVersion:state.meta.hydrologyVersion,params:{...state.params}};}
 function query(frame,point){const q=new URLSearchParams({seed:frame.seed,x:String(point?.x??frame.x),z:String(point?.z??frame.z),step:String(frame.step),layer:frame.layer,contourInterval:String(frame.contourInterval),...Object.fromEntries(Object.entries(frame.params).map(([k,v])=>[k,String(v)]))});if(!point){q.set('width',canvas.width);q.set('height',canvas.height);}return q;}
 function validView(x,z,step){return [x,z,step].every(Number.isSafeInteger)&&step>=1&&step<=1048576&&x>=-LIMIT&&z>=-LIMIT&&x+(canvas.width-1)*step<=LIMIT&&z+(canvas.height-1)*step<=LIMIT;}
 function layerState(){const field=state.meta.fields.find(f=>f.id===state.layer);$('fieldTitle').textContent=field.label;$('legend').textContent=field.description;$('heightLegend').hidden=state.layer!=='heightMap';$('contourState').textContent=state.layer==='heightMap'?'Updating contours...':'Contours apply to Height + contours';for(const b of $('layers').children)b.setAttribute('aria-pressed',String(b.dataset.field===state.layer));}
@@ -13,11 +13,13 @@ async function render(){
   if(!validView(state.x,state.z,state.step)){error('The requested view exceeds the supported coordinates or step range.');return;}
   state.controller?.abort();state.controller=new AbortController();const revision=++state.revision,frame=capture();
   state.inspectRevision++;$('inspection').replaceChildren();$('inspectCoords').textContent='Click the completed map to inspect all fields.';$('export').disabled=true;
+  $('waterSummary').textContent='Click the map for its complete continent rainfall/overflow budget.';
   $('renderState').hidden=false;$('renderState').textContent='Rendering world coordinates…';error('');syncView();layerState();
   try{
     const response=await fetch('/api/tectonic/render?'+query(frame),{signal:state.controller.signal});
     if(!response.ok)throw new Error((await response.json()).error||'Render failed');
     if(response.headers.get('X-World-Model')!==state.meta.model||response.headers.get('X-World-Version')!==state.meta.version)throw new Error('Wrong world model/version returned. Reload the page.');
+    if(response.headers.get('X-Hydrology-Version')!==frame.hydrologyVersion)throw new Error('Wrong hydrology version returned. Reload the page.');
     const blob=await response.blob(),bitmap=await createImageBitmap(blob);
     if(revision!==state.revision){bitmap.close();return;}ctx.drawImage(bitmap,0,0);bitmap.close();
     state.committed={...frame,blob};state.completeRevision=revision;$('renderState').hidden=true;$('export').disabled=false;
@@ -25,7 +27,7 @@ async function render(){
     $('landFraction').textContent=(100*Number(response.headers.get('X-Land-Fraction'))).toFixed(2)+'% local land';
     $('timing').textContent=Number(response.headers.get('X-Render-Ms')).toFixed(0)+' ms generator + color rendering';
     $('coords').textContent=`x ${frame.x.toLocaleString()} · z ${frame.z.toLocaleString()} · ${frame.step.toLocaleString()} blocks / px`;
-    const saved=query(frame);saved.delete('width');saved.delete('height');saved.set('version',state.meta.version);history.replaceState(null,'','/tectonics.html?'+saved);
+    const saved=query(frame);saved.delete('width');saved.delete('height');saved.set('version',state.meta.version);saved.set('hydrologyVersion',frame.hydrologyVersion);history.replaceState(null,'','/tectonics.html?'+saved);
   }catch(e){if(e.name==='AbortError'||revision!==state.revision)return;error(e.message);$('renderState').textContent='Render failed — previous image is not the requested view';}
 }
 function apply(){
@@ -45,9 +47,10 @@ async function inspect(pixel){
   const frame=state.committed,revision=++state.inspectRevision,point={x:frame.x+pixel.x*frame.step,z:frame.z+pixel.z*frame.step};
   $('inspectCoords').textContent=`x ${point.x} · z ${point.z} — loading`;
   try{const response=await fetch('/api/tectonic/sample?'+query(frame,point));if(!response.ok)throw new Error((await response.json()).error||'Inspection failed');const data=await response.json();
-    if(revision!==state.inspectRevision)return;if(data.model!==state.meta.model||data.version!==state.meta.version||data.seed!==frame.seed||data.x!==String(point.x)||data.z!==String(point.z))throw new Error('Inspector returned a mismatched world point.');
+    if(revision!==state.inspectRevision)return;if(data.model!==state.meta.model||data.version!==state.meta.version||data.hydrologyVersion!==frame.hydrologyVersion||data.seed!==frame.seed||data.x!==String(point.x)||data.z!==String(point.z))throw new Error('Inspector returned a mismatched world point.');
     $('inspectCoords').textContent=`x ${data.x} · z ${data.z}`;$('inspection').replaceChildren();
-    for(const field of state.meta.fields){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=field.label;const value=data.fields[field.id];dd.textContent=typeof value==='number'?(Number.isInteger(value)?String(value):value.toFixed(3)):String(value);$('inspection').append(dt,dd);}
+    for(const field of state.meta.fields){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=field.label;const value=data.fields[field.id];dd.textContent=value===null?'unavailable':typeof value==='number'?(Number.isInteger(value)?String(value):value.toFixed(3)):String(value);$('inspection').append(dt,dd);}
+    const h=data.hydrology;$('waterSummary').textContent=h?.status?`Canonical node ${h.nodeX}, ${h.nodeZ}; ${h.step} blocks/grid step. Complete family: ${h.activeCells} nodes. Supplied ${h.supplied}; discharged ${h.discharged}; unresolved ${h.unresolved}. Node flux ${h.flux}. Units: rain-mm × model-block²/year. ${h.downstream?`Next: ${h.downstream.x}, ${h.downstream.z}.`:'Maritime terminal.'}`:'Hydrology unresolved or complete continent support unavailable here. No map-edge outlet is invented.';
   }catch(e){if(revision===state.inspectRevision)error(e.message);}
 }
 let drag=null,wheelTimer=null;
@@ -62,7 +65,7 @@ $('overview').onclick=()=>{if(!state.meta)return;const step=Math.max(1,Math.roun
 $('reset').onclick=()=>{if(!state.meta)return;for(const s of state.meta.params)$('p-'+s.id).value=s.default;$('seed').value='42';$('originX').value=-786432;$('originZ').value=-786432;$('step').value=4096;state.contourInterval=25;$('contourInterval').value=25;apply();};
 $('contourInterval').addEventListener('change',()=>{const value=Number($('contourInterval').value);if(!Number.isSafeInteger(value)||(value!==0&&(value<5||value>1000))){error('Contour spacing must be 0 (off) or 5..1000 model metres.');return;}state.contourInterval=value;render();});
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-$('export').onclick=()=>{const c=state.committed;if(!c||state.completeRevision!==state.revision)return;const {blob,...config}=c;download(blob,`genesis-tectonic-${c.seed}-${c.layer}.png`);download(new Blob([JSON.stringify({model:state.meta.model,version:state.meta.version,...config,width:canvas.width,height:canvas.height,waterStatus:'not solved'},null,2)],{type:'application/json'}),'genesis-tectonic-config.json');};
+$('export').onclick=()=>{const c=state.committed;if(!c||state.completeRevision!==state.revision)return;const {blob,...config}=c;download(blob,`genesis-tectonic-${c.seed}-${c.layer}.png`);download(new Blob([JSON.stringify({model:state.meta.model,version:state.meta.version,...config,width:canvas.width,height:canvas.height,waterStatus:'coarse continent overflow; fine realization pending'},null,2)],{type:'application/json'}),'genesis-tectonic-config.json');};
 async function init(){
   try{const response=await fetch('/api/tectonic/meta');if(!response.ok)throw new Error('Tectonic API unavailable. Restart the updated local server.');state.meta=await response.json();
     const url=new URLSearchParams(location.search),legacy=['crustProvinceScale','crustRadiusPermille'];
@@ -70,12 +73,13 @@ async function init(){
     for(const key of url.keys())if(!INPUTS.includes(key)&&!state.meta.params.some(p=>p.id===key)&&!(upgrade&&legacy.includes(key)))throw new Error('Unknown saved configuration key: '+key);
     if(upgrade){for(const s of state.meta.params)url.delete(s.id);for(const key of legacy)url.delete(key);url.delete('version');$('upgradeNotice').hidden=false;}
     if(url.has('version')&&url.get('version')!==state.meta.version)throw new Error('This saved world uses another generator version. Open /tectonics.html for the current preset.');
+    if(url.has('hydrologyVersion')&&url.get('hydrologyVersion')!==state.meta.hydrologyVersion)throw new Error('This saved world uses another hydrology version. Open /tectonics.html for the current preset.');
     for(const s of state.meta.params){const label=document.createElement('label'),input=document.createElement('input');label.textContent=s.label;input.id='p-'+s.id;input.type='number';input.min=s.min;input.max=s.max;input.step=s.step;input.value=url.get(s.id)??s.default;label.append(input);$('params').append(label);}
     for(const f of state.meta.fields){const b=document.createElement('button');b.type='button';b.textContent=f.label;b.title=f.description;b.dataset.field=f.id;b.onclick=()=>{state.layer=f.id;render();};$('layers').append(b);}
     state.layer=url.get('layer')||'elevation';if(!state.meta.fields.some(f=>f.id===state.layer))throw new Error('Unknown saved field.');
     state.contourInterval=Number(url.get('contourInterval')??25);if(!Number.isSafeInteger(state.contourInterval)||(state.contourInterval!==0&&(state.contourInterval<5||state.contourInterval>1000)))throw new Error('Invalid saved contour interval.');$('contourInterval').value=state.contourInterval;
     $('seed').value=url.get('seed')??state.seed;$('originX').value=url.get('x')??state.x;$('originZ').value=url.get('z')??state.z;$('step').value=url.get('step')??state.step;
-    $('version').textContent=state.meta.version+' · '+state.meta.model;apply();
+    $('version').textContent=state.meta.version+' · '+state.meta.hydrologyVersion;apply();
   }catch(e){error(e.message);$('renderState').textContent='Viewer unavailable';}
 }
 init();

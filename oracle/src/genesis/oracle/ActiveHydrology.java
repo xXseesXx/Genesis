@@ -41,6 +41,31 @@ public final class ActiveHydrology {
     public static Result solveD8Surface(int width,int height,int[] terrain,boolean[] active,boolean[] terminals,long[] runoff) {
         return solveInternal(width,height,terrain,active,terminals,runoff,null,null,true);
     }
+    /** Same minimax spill levels; steepest filled-surface descent outside flats.
+     * Flat/lake paths retain the terminating priority-flood tree. Integer D8 lengths
+     * 1000/1414 avoid floating tie decisions. Existing reference methods are unchanged.
+     */
+    public static Result solveD8Rivers(int width,int height,int[] terrain,boolean[] active,boolean[] terminals,long[] runoff) {
+        Result flood=solveD8Surface(width,height,terrain,active,terminals,runoff);int n=terrain.length;
+        int[] down=flood.downstream.clone(),sequence=new int[n];Arrays.fill(sequence,-1);
+        for(int p=0;p<n;p++)if(flood.resolved(p)) {
+            sequence[flood.order[p]]=p;if(terminals[p])continue;
+            int x=p%width,z=p/width,best=-1,length=1;long drop=0;
+            for(int dz=-1;dz<=1;dz++)for(int dx=-1;dx<=1;dx++) {
+                int nx=x+dx,nz=z+dz;if(dx==0&&dz==0||nx<0||nz<0||nx>=width||nz>=height)continue;int q=nz*width+nx;
+                if(!active[q]||!flood.resolved(q))continue;long candidate=(long)flood.filled[p]-flood.filled[q];int distance=dx!=0&&dz!=0?1414:1000;
+                if(candidate>0&&(best<0||candidate*length>drop*distance)){best=q;drop=candidate;length=distance;}
+            }
+            if(best>=0)down[p]=best;
+        }
+        long[] flux=runoff.clone();long discharge=0;
+        for(int k=n-1;k>=0;k--){int p=sequence[k];if(p<0)continue;int q=down[p];
+            if(q>=0){if(flood.order[q]>=flood.order[p])throw new AssertionError("Steepest route violated flood order");flux[q]=Math.addExact(flux[q],flux[p]);}
+            else discharge=Math.addExact(discharge,flux[p]);
+        }
+        if(Math.addExact(discharge,flood.unresolved)!=flood.supplied)throw new AssertionError("River ledger mismatch");
+        return new Result(flood.filled,down,flood.order,flux,flood.supplied,discharge,flood.unresolved,flood.fillDepthSum);
+    }
     private static Result solveInternal(int width,int height,int[] terrain,boolean[] active,boolean[] terminals,long[] runoff,
                                         int[] east,int[] south,boolean diagonal) {
         long size=(long)width*height;

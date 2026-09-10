@@ -59,6 +59,7 @@ public final class Gates {
         BoundaryForcingGates.run();
         JunctionForcingGates.run();
         TectonicTerrainGates.run();
+        ContinentalHydrologyGates.run();
         TectonicViewGates.run();
         CrestMeshGates.run();
         ChannelGates.run();
