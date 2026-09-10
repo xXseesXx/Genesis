@@ -15,15 +15,18 @@ import java.util.Map;
 
 /** Experimental sparse-plate terrain; deterministic and bounded, with no hydrological terminals. */
 public final class TectonicTerrain {
-    public static final String VERSION="tectonic-terrain-v2";
+    public static final String VERSION="tectonic-terrain-v3";
     public record Settings(int coastBlendPermille,int seaThreshold,int landHeight,int oceanDepth,
                            int forcingPermille,int detailHeight,int seaLevel,int plateWarpPermille,
-                           int plateRoughnessPermille,int plateRelief,int plateTilt) {
+                           int plateRoughnessPermille,int plateRelief,int plateTilt,int elevationOffset) {
+        public Settings(int coast,int threshold,int land,int ocean,int forcing,int detail,int sea,int warp,int rough,int relief,int tilt) {
+            this(coast,threshold,land,ocean,forcing,detail,sea,warp,rough,relief,tilt,-1700);
+        }
         public Settings {
             if(coastBlendPermille<40||coastBlendPermille>300||seaThreshold<200||seaThreshold>800
                 ||landHeight<100||landHeight>6000||oceanDepth<100||oceanDepth>10000||forcingPermille<0||forcingPermille>3000
                 ||detailHeight<0||detailHeight>1000||seaLevel< -2000||seaLevel>2000||plateWarpPermille<0||plateWarpPermille>300
-                ||plateRoughnessPermille<0||plateRoughnessPermille>200||plateRelief<0||plateRelief>1200||plateTilt<0||plateTilt>1200)
+                ||plateRoughnessPermille<0||plateRoughnessPermille>200||plateRelief<0||plateRelief>1200||plateTilt<0||plateTilt>1200||elevationOffset< -4000||elevationOffset>0)
                 throw new IllegalArgumentException("Unsupported tectonic terrain settings");
         }
         public static Settings defaults(){return new Settings(120,500,1800,4200,1000,180,0,220,140,450,600);}
@@ -40,6 +43,10 @@ public final class TectonicTerrain {
     private final ContinentalGroups groups;
     private final Noise detail;
     private final int transformRatio,coverage;
+    // Only a performance cache; evicting/reordering entries cannot change values.
+    private final Map<Long,PlateResponse.Response> responses=new java.util.LinkedHashMap<>(256,.75f,true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<Long,PlateResponse.Response> e){return size()>1024;}
+    };
     public final Settings settings;
     public final Params plateParams;
     public final long seed;
@@ -65,15 +72,16 @@ public final class TectonicTerrain {
         double envelope=crust.envelope;
         double plateSurface=plateSurface(partition.candidates(),x,z)*envelope;
         double base=signed*(signed<0?settings.oceanDepth:settings.landHeight)*envelope
-            -Math.max(4000,settings.oceanDepth)*(1-envelope)+plateSurface;
+            -Math.max(4000,settings.oceanDepth)*(1-envelope)+plateSurface+settings.elevationOffset;
         double small=detail.sample(x,z)*settings.detailHeight*signed*signed*envelope;
         var forcing=forcing(partition,x,z);double gain=settings.forcingPermille/1000.0;
         double positive=forcing.positive()*gain*envelope,negative=forcing.negative()*gain*envelope,elevation=base+small+positive+negative;
         Plate owner=site.plate(crust.rawSigned>=0?1:0);double boundary=boundaryDistance(partition);
+        var response=response(site);
         return new Sample(owner,crust.group.id(),crust.group.size(),crust.fraction,base,plateSurface,small,positive,negative,elevation,
             elevation>settings.seaLevel,crust.group.size(),forcing.supportedPlates(),site.scalePermille(),
-            site.datumQ()*settings.plateRelief/1024.0,site.tiltXQ()*settings.plateTilt/1024.0,
-            site.tiltZQ()*settings.plateTilt/1024.0,site.recentFracture(),boundary);
+            response.datum()*settings.plateRelief,response.tiltX()*settings.plateTilt,
+            response.tiltZ()*settings.plateTilt,site.recentFracture(),boundary);
     }
 
     public Site plateSite(long i,long j){return plates.site(i,j);}
@@ -83,6 +91,17 @@ public final class TectonicTerrain {
         return site.plate(continental(site,candidates,site.x(),site.z(),false).rawSigned>=0?1:0);
     }
     public Group continent(long i,long j){return groups.group(i,j);}
+
+    private PlateResponse.Response response(Site site) {
+        synchronized(responses) {
+            var cached=responses.get(site.id());if(cached!=null)return cached;
+            var neighbors=new ArrayList<Site>();
+            // Site jitter is at most .25S per axis. A site three cells away
+            // is at least 2.5S away, outside the 2S compact response kernel.
+            for(int j=-2;j<=2;j++)for(int i=-2;i<=2;i++)neighbors.add(plates.site(site.i()+i,site.j()+j));
+            var result=PlateResponse.solve(site,neighbors,plates.spacing);responses.put(site.id(),result);return result;
+        }
+    }
 
     /** Closest competing power cell with candidate-local crust. */
     public BoundaryForcing.Sample boundary(long x,long z) {
@@ -128,8 +147,9 @@ public final class TectonicTerrain {
         long nearest=candidates.get(0).score();double band=plates.spacing*(double)plates.spacing*384,total=0,value=0;
         for(Scored scored:candidates) {
             double t=(scored.score()-nearest)/band;if(t>=1)break;double w=(1-t)*(1-t)*(1+2*t);Site s=scored.site();
-            double plane=s.datumQ()*settings.plateRelief/1024.0
-                +((x-s.x())/(double)plates.spacing*s.tiltXQ()+(z-s.z())/(double)plates.spacing*s.tiltZQ())*settings.plateTilt/1024.0;
+            var response=response(s);
+            double plane=response.datum()*settings.plateRelief
+                +((x-s.x())/(double)plates.spacing*response.tiltX()+(z-s.z())/(double)plates.spacing*response.tiltZ())*settings.plateTilt;
             total+=w;value+=plane*w;
         }
         return value/total;
@@ -178,7 +198,11 @@ public final class TectonicTerrain {
         double dx=b.x()-a.x(),dz=b.z()-a.z(),length2=dx*dx+dz*dz;
         double t=Math.max(0,Math.min(1,((x-a.x())*dx+(z-a.z())*dz)/length2));
         double px=a.x()+t*dx,pz=a.z()+t*dz,distance=StrictMath.hypot(x-px,z-pz);
-        return (plates.spacing*.12-distance)/width;
+        double normal=((a.vx()-b.vx())*dx+(a.vz()-b.vz())*dz)/StrictMath.sqrt(length2)/64.0;
+        // Continental sutures widen under compression; opening seams narrow.
+        // Inter-family straits retain the finite continent-size guarantee.
+        double radius=plates.spacing*(.12+.10*Math.max(-.8,Math.min(1.5,normal)));
+        return (radius-distance)/width;
     }
     private static boolean same(Group a,Group b){return a.tileI()==b.tileI()&&a.tileJ()==b.tileJ()&&a.part()==b.part();}
     private static double unit(long h){return (h>>>11)*0x1.0p-53;}

@@ -60,19 +60,20 @@ final class TectonicTerrainGates {
                 fingerprint(digest,bytes,sample);supportCases++;
             }
         }
-        groupChecks();attributeChecks();counterfactualChecks();barrierChecks();componentFixtures();
+        groupChecks();attributeChecks();motionChecks();counterfactualChecks();barrierChecks();mountainChecks();componentFixtures();
         List<Audit> audits=new ArrayList<>();for(long seed:new long[]{42,-1,137,8675309,0,Long.MIN_VALUE})audits.add(audit(seed));
         double mean=audits.stream().mapToDouble(Audit::wideLand).average().orElseThrow();
         for(Audit audit:audits) {
-            check(audit.wideLand>=50&&audit.wideLand<=55,"Default preset left 50..55% wide-area target for seed "+audit.seed+": "+audit.wideLand);
-            check(audit.wellSampledPlates>10&&audit.mixedPlates>=audit.wellSampledPlates*.85,"Too many well-sampled plates are wholly land or water");
+            System.out.println("Seed "+audit.seed+": land="+audit.wideLand+"%, mixed plates="+audit.mixedPlates+"/"+audit.wellSampledPlates);
+            check(audit.wideLand>=28&&audit.wideLand<=32,"Default preset left 28..32% wide-area target for seed "+audit.seed+": "+audit.wideLand);
+            check(audit.wellSampledPlates>10&&audit.mixedPlates>=audit.wellSampledPlates*.80,"Mixed land/water plates are no longer the common case");
             check(audit.singletonContinents>audit.multiPlateContinents,"Singleton continents are not the common case");
             check(audit.land.largestPlates<=4,"A sampled landmass crossed the constructed four-plate cap");
         }
         String fingerprint=HexFormat.of().formatHex(digest.digest());
-        check(fingerprint.equals("e9f11af63c11466bf6ffaea5af7752ff3d4ceb8b22e999337e23563a831c2583"),"Versioned v2 terrain fingerprint changed");
+        check(fingerprint.equals("320631683b8b458d4603d86873efe8d65a07c5a643b17d247ce6c77f42c31413"),"Versioned v3 terrain fingerprint changed: "+fingerprint);
         write(audits,supportCases,mean,fingerprint);render(audits);renderArchitecture();
-        System.out.println("PASS TECTONIC TERRAIN V2: "+supportCases+" bounded-support/cold cases; 1..4 plate continents; mixed submerged plates; six-seed mean land="+mean+"%; fingerprint="+fingerprint);
+        System.out.println("PASS TECTONIC TERRAIN V3: "+supportCases+" bounded-support/cold cases; motion-derived relief; mountain sutures; 1..4 plate continents; six-seed mean land="+mean+"%; fingerprint="+fingerprint);
     }
 
     private static void groupChecks() {
@@ -101,6 +102,47 @@ final class TectonicTerrainGates {
             if(plates.sample(x*spacing/16L,z*spacing/16L).owner().id()!=plain.sample(x*spacing/16L,z*spacing/16L).owner().id())changed++;
         check(changed>500,"Warped/serrated ownership is indistinguishable from the plain power diagram");
     }
+    private static IrregularPlates.Site motionSite(long id,long x,long z,int vx,int vz) {
+        return new IrregularPlates.Site(0,0,id,x,z,vx,vz,0,1000,0,999,-888,777,false);
+    }
+    private static void motionChecks() {
+        var owner=motionSite(0,0,0,0,0);var east=motionSite(1,1000,0,-64,0);var west=motionSite(2,-1000,0,64,0);
+        var one=genesis.oracle.PlateResponse.solve(owner,List.of(east),1000);
+        check(one.datum()==1&&one.tiltX()==1&&one.tiltZ()==0,"One-sided compression must raise and tilt toward collision");
+        var both=genesis.oracle.PlateResponse.solve(owner,List.of(east,west),1000);
+        check(both.datum()==1&&both.tiltX()==0&&both.tiltZ()==0,"Opposing compression should cancel tilt, not uplift");
+        check(both.equals(genesis.oracle.PlateResponse.solve(owner,List.of(west,east),1000)),"Response depends on neighbor order");
+        var opening=genesis.oracle.PlateResponse.solve(owner,List.of(motionSite(1,1000,0,64,0)),1000);
+        check(opening.datum()==-1&&opening.tiltX()==-1,"Opening plate side does not subside");
+        check(one.equals(genesis.oracle.PlateResponse.solve(motionSite(0,0,0,13,-22),List.of(motionSite(1,1000,0,-51,-22)),1000)),"Common velocity changes relief");
+        var fast=genesis.oracle.PlateResponse.solve(owner,List.of(motionSite(1,1000,0,-128,0)),1000);
+        check(fast.datum()==2*one.datum()&&fast.tiltX()==2*one.tiltX(),"Response does not track relative speed");
+        check(genesis.oracle.PlateResponse.solve(owner,List.of(motionSite(1,1000,0,0,64)),1000).datum()==0,"Pure shear creates broad compression");
+        check(one.equals(genesis.oracle.PlateResponse.solve(owner,List.of(east,motionSite(2,-2000,0,128,128)),1000)),"Outside compact support affects relief");
+        var plates=new IrregularPlates(42,TectonicTerrain.defaultPlateParams(),220,140);
+        for(int k=-10;k<=10;k++) {
+            var small=new ArrayList<IrregularPlates.Site>();var large=new ArrayList<IrregularPlates.Site>();
+            for(int j=-4;j<=4;j++)for(int i=-4;i<=4;i++){var site=plates.site(k+i,k+j);large.add(site);if(Math.abs(i)<=2&&Math.abs(j)<=2)small.add(site);}
+            check(genesis.oracle.PlateResponse.solve(plates.site(k,k),small,plates.spacing).equals(genesis.oracle.PlateResponse.solve(plates.site(k,k),large,plates.spacing)),"Motion response needs unbounded neighbor support");
+        }
+    }
+    private static void mountainChecks()throws Exception {
+        var world=new TectonicTerrain(42,TectonicTerrain.defaultPlateParams(),Settings.defaults());long s=world.plateParams.integer("plateSpacing");
+        int mountains=0;long exampleX=0,exampleZ=0;double peak=0;
+        for(int z=-48;z<=48;z++)for(int x=-96;x<96;x++) {
+            long ax=x*s/8,bx=ax+s/8,wz=z*s/4+317;Sample a=world.sample(ax,wz),b=world.sample(bx,wz);
+            if(a.owner().id()==b.owner().id()||a.continentId()!=b.continentId())continue;
+            long id=a.owner().id();while(bx-ax>1){long mid=(ax+bx)>>1;if(world.sample(mid,wz).owner().id()==id)ax=mid;else bx=mid;}
+            a=world.sample(ax,wz);b=world.sample(bx,wz);
+            if(a.continentId()!=b.continentId()||!a.land()||!b.land()||Math.min(a.elevation(),b.elevation())<250||a.positiveForcing()<100)continue;
+            if(world.boundary(ax,wz).edge().regime()!=genesis.oracle.BoundaryForcing.Regime.COLLISION)continue;
+            mountains++;
+            if(a.elevation()>peak){peak=a.elevation();exampleX=ax;exampleZ=wz;}
+        }
+        check(mountains>=5,"Too few actual mountain-height plate crossings: "+mountains);
+        Files.createDirectories(Path.of("build/gallery"));Files.writeString(Path.of("build/tectonic-mountain-crossings.json"),"{\"seed\":42,\"crossings\":"+mountains+",\"exampleX\":"+exampleX+",\"exampleZ\":"+exampleZ+",\"height\":"+peak+"}\n");
+        System.out.println("Mountain sutures: "+mountains+"; example x="+exampleX+" z="+exampleZ+" height="+peak);
+    }
     private static void counterfactualChecks()throws Exception {
         Params params=TectonicTerrain.defaultPlateParams();Settings d=Settings.defaults();
         var world=new TectonicTerrain(42,params,d);
@@ -110,6 +152,8 @@ final class TectonicTerrainGates {
             0,0,d.seaLevel(),d.plateWarpPermille(),d.plateRoughnessPermille(),d.plateRelief(),d.plateTilt()));
         var highSea=new TectonicTerrain(42,params,new Settings(d.coastBlendPermille(),d.seaThreshold(),d.landHeight(),d.oceanDepth(),
             d.forcingPermille(),d.detailHeight(),200,d.plateWarpPermille(),d.plateRoughnessPermille(),d.plateRelief(),d.plateTilt()));
+        var unshifted=new TectonicTerrain(42,params,new Settings(d.coastBlendPermille(),d.seaThreshold(),d.landHeight(),d.oceanDepth(),
+            d.forcingPermille(),d.detailHeight(),d.seaLevel(),d.plateWarpPermille(),d.plateRoughnessPermille(),d.plateRelief(),d.plateTilt(),0));
         int changed=0;List<Callable<Sample>> jobs=new ArrayList<>();
         for(int z=-12;z<12;z++)for(int x=-12;x<12;x++) {
             long wx=x*32768L,wz=z*32768L;Sample a=world.sample(wx,wz),b=flat.sample(wx,wz),c=baseOnly.sample(wx,wz),h=highSea.sample(wx,wz);
@@ -117,9 +161,11 @@ final class TectonicTerrainGates {
             if(a.baseElevation()!=b.baseElevation())changed++;
             check(c.elevation()==c.baseElevation()&&c.detail()==0&&c.positiveForcing()==0&&c.negativeForcing()==0,"Zero detail/forcing ignored");
             check(a.elevation()==h.elevation()&&(!h.land()||a.land()),"Sea level changed the bed or created land");
+            Sample u=unshifted.sample(wx,wz);check(Math.abs(u.elevation()+d.elevationOffset()-a.elevation())<1e-9&&u.owner().equals(a.owner())&&u.positiveForcing()==a.positiveForcing(),"Global lowering changed tectonics or is not a fixed offset");
             check(a.equals(world.sample(wx,wz)),"Repeated sample changed");if((x+z)%11==0)jobs.add(()->world.sample(wx,wz));
         }
         check(changed>300,"Plate datum/tilt do not affect broad terrain");
+        Sample cached=world.sample(0,0);for(int i=0;i<1100;i++)world.sample(i*524288L,778899);check(cached.equals(world.sample(0,0)),"Response cache eviction changed terrain");
         try(var pool=Executors.newFixedThreadPool(4)){var results=pool.invokeAll(jobs);for(int i=0;i<jobs.size();i++)check(results.get(i).get().equals(jobs.get(i).call()),"Concurrent sample changed");}
         rejects(()->new Settings(39,500,1800,4200,1000,180,0,180,80,450,600));
         rejects(()->new IrregularPlates(42,params,301,80));rejects(()->world.sample(Long.MAX_VALUE,0));
@@ -127,7 +173,7 @@ final class TectonicTerrainGates {
 
     private static void barrierChecks() {
         Params p=new Params(Map.of("plateSpacing",8192.0,"plateSpeed",128.0,"continentalPercent",100.0));
-        Settings extreme=new Settings(300,200,6000,100,3000,1000,-2000,300,200,1200,1200);
+        Settings extreme=new Settings(300,200,6000,100,3000,1000,-2000,300,200,1200,1200,0);
         var world=new TectonicTerrain(42,p,extreme);int crossings=0;
         // Locate ownership transitions independently, then inspect actual bed through
         // each transition at one-block resolution, under the most land-favoring controls.
@@ -138,7 +184,7 @@ final class TectonicTerrainGates {
             long id=a.continentId();
             while(bx-ax>1){long mid=(ax+bx)>>1;if(world.sample(mid,wz).continentId()==id)ax=mid;else bx=mid;}
             a=world.sample(ax,wz);b=world.sample(bx,wz);
-            check(!a.land()&&!b.land()&&a.elevation()==-4000&&b.elevation()==-4000,"Family divide flooded upward under extreme parameters");crossings++;
+            check(!a.land()&&!b.land()&&a.elevation()==-4000+extreme.elevationOffset()&&b.elevation()==-4000+extreme.elevationOffset(),"Family divide flooded upward under extreme parameters");crossings++;
         }
         check(crossings>100,"Too few independently located family crossings");
     }
@@ -207,8 +253,8 @@ final class TectonicTerrainGates {
     }
 
     private static void write(List<Audit> audits,int cases,double mean,String fingerprint)throws Exception {
-        StringBuilder json=new StringBuilder("{\n  \"experiment\":\"tectonic-terrain-v2\",\n  \"status\":\"sparse irregular plates and finite continental-crust groups; water terminals unresolved\",\n")
-            .append("  \"preset\":{\"plateSpacing\":524288,\"continentalPercent\":53,\"plateWarpPermille\":220,\"plateRoughnessPermille\":140,\"seaLevel\":0},\n")
+        StringBuilder json=new StringBuilder("{\n  \"experiment\":\"tectonic-terrain-v3\",\n  \"status\":\"motion-driven sparse plates and finite continental-crust groups; water terminals unresolved\",\n")
+            .append("  \"preset\":{\"plateSpacing\":524288,\"continentalPercent\":53,\"plateWarpPermille\":220,\"plateRoughnessPermille\":140,\"seaLevel\":0,\"elevationOffset\":-1700,\"targetLandPercent\":30},\n")
             .append("  \"construction\":{\"maximumPlatesPerContinentalGroup\":4,\"singletonsDominant\":true,\"nominalPlateDensityVsV1\":0.015625},\n")
             .append("  \"supportCases\":").append(cases).append(",\n  \"fingerprint\":\"").append(fingerprint).append("\",\n  \"sampledMeanLandPercent\":").append(mean)
             .append(",\n  \"sampling\":\"Morphology: 193x193 over 12S. Area: 16384 fixed jittered strata over 128S. No viewport normalization.\",\n  \"audits\":[\n");
@@ -225,7 +271,7 @@ final class TectonicTerrainGates {
             case 4->signed(s.plateSurface(),1400);default->blend(new Color(223,232,227),new Color(112,69,134),(s.plateScalePermille()-600)/1200.0);};image.setRGB(p%SIDE,p/SIDE,c.getRGB());}return image;
     }
     private static void render(List<Audit> audits)throws Exception {
-        var image=new BufferedImage(1200,720,BufferedImage.TYPE_INT_RGB);var g=canvas(image,"Sparse tectonic terrain v2","Six seeds | each crop spans 12 plate spacings | fixed 53% preset, no viewport normalization");
+        var image=new BufferedImage(1200,720,BufferedImage.TYPE_INT_RGB);var g=canvas(image,"Sparse tectonic terrain v3","Six seeds | each crop spans 12 plate spacings | fixed bed offset targets 30% land, no viewport normalization");
         for(int i=0;i<audits.size();i++){Audit a=audits.get(i);int ox=20+i%3*395,oy=85+i/3*300;g.drawString("Seed "+a.seed+String.format(Locale.ROOT," | %.2f%% land | %d plates",a.localLand,a.visiblePlates),ox,oy);g.drawImage(map(a.samples,0),ox,oy+10,280,280,null);}
         g.drawString("Land components are separated continental-crust families of 1-4 plates. Low bed is not yet certified ocean.",20,704);g.dispose();ImageIO.write(image,"png",Path.of("build/gallery/tectonic-terrain.png").toFile());
     }

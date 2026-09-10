@@ -1,13 +1,13 @@
 'use strict';
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d');
-const state={meta:null,seed:'42',params:{},x:-786432,z:-786432,step:4096,layer:'elevation',revision:0,completeRevision:0,committed:null,controller:null,inspectRevision:0,dirty:false};
-const LIMIT=2**40,INPUTS=['x','z','step','seed','layer','version'];
+const state={meta:null,seed:'42',params:{},x:-786432,z:-786432,step:4096,layer:'elevation',contourInterval:25,revision:0,completeRevision:0,committed:null,controller:null,inspectRevision:0,dirty:false};
+const LIMIT=2**40,INPUTS=['x','z','step','seed','layer','version','contourInterval'];
 function error(message){$('error').textContent=message||'';$('error').hidden=!message;}
 function syncView(){if(!state.dirty){$('seed').value=state.seed;$('originX').value=state.x;$('originZ').value=state.z;$('step').value=state.step;}}
-function capture(){return {seed:state.seed,x:state.x,z:state.z,step:state.step,layer:state.layer,params:{...state.params}};}
-function query(frame,point){const q=new URLSearchParams({seed:frame.seed,x:String(point?.x??frame.x),z:String(point?.z??frame.z),step:String(frame.step),layer:frame.layer,...Object.fromEntries(Object.entries(frame.params).map(([k,v])=>[k,String(v)]))});if(!point){q.set('width',canvas.width);q.set('height',canvas.height);}return q;}
+function capture(){return {seed:state.seed,x:state.x,z:state.z,step:state.step,layer:state.layer,contourInterval:state.contourInterval,params:{...state.params}};}
+function query(frame,point){const q=new URLSearchParams({seed:frame.seed,x:String(point?.x??frame.x),z:String(point?.z??frame.z),step:String(frame.step),layer:frame.layer,contourInterval:String(frame.contourInterval),...Object.fromEntries(Object.entries(frame.params).map(([k,v])=>[k,String(v)]))});if(!point){q.set('width',canvas.width);q.set('height',canvas.height);}return q;}
 function validView(x,z,step){return [x,z,step].every(Number.isSafeInteger)&&step>=1&&step<=1048576&&x>=-LIMIT&&z>=-LIMIT&&x+(canvas.width-1)*step<=LIMIT&&z+(canvas.height-1)*step<=LIMIT;}
-function layerState(){const field=state.meta.fields.find(f=>f.id===state.layer);$('fieldTitle').textContent=field.label;$('legend').textContent=field.description;for(const b of $('layers').children)b.setAttribute('aria-pressed',String(b.dataset.field===state.layer));}
+function layerState(){const field=state.meta.fields.find(f=>f.id===state.layer);$('fieldTitle').textContent=field.label;$('legend').textContent=field.description;$('heightLegend').hidden=state.layer!=='heightMap';$('contourState').textContent=state.layer==='heightMap'?'Updating contours...':'Contours apply to Height + contours';for(const b of $('layers').children)b.setAttribute('aria-pressed',String(b.dataset.field===state.layer));}
 async function render(){
   if(!state.meta)return;
   if(!validView(state.x,state.z,state.step)){error('The requested view exceeds the supported coordinates or step range.');return;}
@@ -21,6 +21,7 @@ async function render(){
     const blob=await response.blob(),bitmap=await createImageBitmap(blob);
     if(revision!==state.revision){bitmap.close();return;}ctx.drawImage(bitmap,0,0);bitmap.close();
     state.committed={...frame,blob};state.completeRevision=revision;$('renderState').hidden=true;$('export').disabled=false;
+    if(frame.layer==='heightMap'){const interval=Number(response.headers.get('X-Contour-Interval'));$('contourState').textContent=interval?`Showing ${interval} m contours (requested ${frame.contourInterval} m); heavier every ${interval*5} m. Zoom in for finer lines.`:'Contours off';}
     $('landFraction').textContent=(100*Number(response.headers.get('X-Land-Fraction'))).toFixed(2)+'% local land';
     $('timing').textContent=Number(response.headers.get('X-Render-Ms')).toFixed(0)+' ms generator + color rendering';
     $('coords').textContent=`x ${frame.x.toLocaleString()} · z ${frame.z.toLocaleString()} · ${frame.step.toLocaleString()} blocks / px`;
@@ -58,19 +59,21 @@ canvas.addEventListener('keydown',e=>{const moves={ArrowLeft:[-1,0],ArrowRight:[
 $('worldForm').addEventListener('submit',e=>{e.preventDefault();apply();});$('zoomIn').onclick=()=>zoom(.5);$('zoomOut').onclick=()=>zoom(2);
 $('worldForm').addEventListener('input',()=>{state.dirty=true;$('draftState').hidden=false;});
 $('overview').onclick=()=>{if(!state.meta)return;const step=Math.max(1,Math.round(state.params.plateSpacing*3/canvas.width));move(-canvas.width/2*step,-canvas.height/2*step,step);};
-$('reset').onclick=()=>{if(!state.meta)return;for(const s of state.meta.params)$('p-'+s.id).value=s.default;$('seed').value='42';$('originX').value=-786432;$('originZ').value=-786432;$('step').value=4096;apply();};
+$('reset').onclick=()=>{if(!state.meta)return;for(const s of state.meta.params)$('p-'+s.id).value=s.default;$('seed').value='42';$('originX').value=-786432;$('originZ').value=-786432;$('step').value=4096;state.contourInterval=25;$('contourInterval').value=25;apply();};
+$('contourInterval').addEventListener('change',()=>{const value=Number($('contourInterval').value);if(!Number.isSafeInteger(value)||(value!==0&&(value<5||value>1000))){error('Contour spacing must be 0 (off) or 5..1000 model metres.');return;}state.contourInterval=value;render();});
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 $('export').onclick=()=>{const c=state.committed;if(!c||state.completeRevision!==state.revision)return;const {blob,...config}=c;download(blob,`genesis-tectonic-${c.seed}-${c.layer}.png`);download(new Blob([JSON.stringify({model:state.meta.model,version:state.meta.version,...config,width:canvas.width,height:canvas.height,waterStatus:'not solved'},null,2)],{type:'application/json'}),'genesis-tectonic-config.json');};
 async function init(){
   try{const response=await fetch('/api/tectonic/meta');if(!response.ok)throw new Error('Tectonic API unavailable. Restart the updated local server.');state.meta=await response.json();
     const url=new URLSearchParams(location.search),legacy=['crustProvinceScale','crustRadiusPermille'];
-    const upgrade=legacy.some(k=>url.has(k))||url.get('version')==='tectonic-terrain-v1';
+    const upgrade=legacy.some(k=>url.has(k))||['tectonic-terrain-v1','tectonic-terrain-v2'].includes(url.get('version'));
     for(const key of url.keys())if(!INPUTS.includes(key)&&!state.meta.params.some(p=>p.id===key)&&!(upgrade&&legacy.includes(key)))throw new Error('Unknown saved configuration key: '+key);
     if(upgrade){for(const s of state.meta.params)url.delete(s.id);for(const key of legacy)url.delete(key);url.delete('version');$('upgradeNotice').hidden=false;}
     if(url.has('version')&&url.get('version')!==state.meta.version)throw new Error('This saved world uses another generator version. Open /tectonics.html for the current preset.');
     for(const s of state.meta.params){const label=document.createElement('label'),input=document.createElement('input');label.textContent=s.label;input.id='p-'+s.id;input.type='number';input.min=s.min;input.max=s.max;input.step=s.step;input.value=url.get(s.id)??s.default;label.append(input);$('params').append(label);}
     for(const f of state.meta.fields){const b=document.createElement('button');b.type='button';b.textContent=f.label;b.title=f.description;b.dataset.field=f.id;b.onclick=()=>{state.layer=f.id;render();};$('layers').append(b);}
     state.layer=url.get('layer')||'elevation';if(!state.meta.fields.some(f=>f.id===state.layer))throw new Error('Unknown saved field.');
+    state.contourInterval=Number(url.get('contourInterval')??25);if(!Number.isSafeInteger(state.contourInterval)||(state.contourInterval!==0&&(state.contourInterval<5||state.contourInterval>1000)))throw new Error('Invalid saved contour interval.');$('contourInterval').value=state.contourInterval;
     $('seed').value=url.get('seed')??state.seed;$('originX').value=url.get('x')??state.x;$('originZ').value=url.get('z')??state.z;$('step').value=url.get('step')??state.step;
     $('version').textContent=state.meta.version+' · '+state.meta.model;apply();
   }catch(e){error(e.message);$('renderState').textContent='Viewer unavailable';}

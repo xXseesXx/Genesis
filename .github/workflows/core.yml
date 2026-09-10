@@ -64,6 +64,7 @@ jobs:
             build/boundary-forcing.json
             build/junction-forcing.json
             build/tectonic-terrain.json
+            build/tectonic-mountain-crossings.json
             build/tectonic-viewer.json
             build/tectonic-ci-server.*.log
             build/crest-mesh.json

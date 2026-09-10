@@ -18,7 +18,7 @@
 
 ## Implemented finite reference
 
-`IrregularPlates`, `ContinentalGroups` and `TectonicTerrain` now provide the [v2 sparse-plate candidate](../research/sparse-irregular-plates.md): warped weighted plate edges, varied size/age classes, spatial crust within plates, bounded families of 1–4 plates, individual datum/tilt, and fixed-sea-level terrain. Six wide-area samples average 50.94% land. `CrustProvinces` and its v1 measurements remain historical research. The candidate is neither a hydrology root provider nor a simulated geological history.
+`IrregularPlates`, `ContinentalGroups`, `PlateResponse` and `TectonicTerrain` provide the [v3 motion-driven candidate](../research/motion-driven-relief.md): warped weighted plate edges, varied size/age, spatial crust, bounded families of1–4 plates, relative-motion-derived datum/tilt and convergent mountain sutures. A fixed−1700 m bed offset gives29.83% mean land across six wide samples. `CrustProvinces` and v1/v2 measurements remain historical research. The broad response is a bounded proximity heuristic, not exact curved contact mechanics. The candidate is neither a hydrology root provider nor a simulated geological history.
 
 `JunctionForcing` composes existing plate-vector profiles with bounded soft multi-plate weights, avoiding the closest-profile selector. It exposes positive/negative net pair contributions and has 25-versus-121-site, independent reduction and exact-output checks. Convex blending can still lower a drainage divide; this is neither final elevation nor certified face geometry. See [the junction experiment and viewer-oriented next steps](../research/junction-forcing-experiment.md).
 
