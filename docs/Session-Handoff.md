@@ -1,5 +1,9 @@
 # Genesis session handoff
 
+## Targeted build runner checkpoint (2026-09-16)
+
+`genesis.ps1` and the new executable `genesis.sh` now expose focused `check`/`gallery` targets: `core`, `continents`, `hydrology-labs`, `tectonic`, `rivers`, `tectonic-viewer`, `refinement`, `geology`, and explicit `all`. Bare `check` selects `tectonic`; legacy `test` selects `all`. Successful runs print only timed `OK` lines, keep full output under `build/logs/`, and show an 80-line tail on failure; PowerShell `-VerboseOutput` and Bash `--verbose` stream output. `build` compiles/packages only the Java8 core, while `serve` omits gate sources. Windows CI uses the PowerShell runner and Ubuntu CI uses the Bash runner. Focused PowerShell and Git-Bash `tectonic` checks pass; the `rivers` target and core-only package also pass. The unrelated uncommitted tectonic-viewer changes present during this work were deliberately left untouched.
+
 Checkpoint: 2026-09-08, `genesis-m5a-v1`. Read this first after a context reset; inspect `git status` and the current commit/CI before making changes. This note preserves project context, not a claim that the conversation runtime was compacted.
 
 ## Latest direction and research checkpoint

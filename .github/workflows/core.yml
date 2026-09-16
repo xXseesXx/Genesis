@@ -1,9 +1,9 @@
 name: Standalone core gates
 on:
   push:
-    paths: ['core/**', 'oracle/**', 'harness/**', 'genesis.ps1', '.github/workflows/core.yml']
+    paths: ['core/**', 'oracle/**', 'harness/**', 'genesis.ps1', 'genesis.sh', '.github/workflows/core.yml']
   pull_request:
-    paths: ['core/**', 'oracle/**', 'harness/**', 'genesis.ps1', '.github/workflows/core.yml']
+    paths: ['core/**', 'oracle/**', 'harness/**', 'genesis.ps1', 'genesis.sh', '.github/workflows/core.yml']
   workflow_dispatch:
 jobs:
   standalone:
@@ -17,9 +17,18 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Compile Java 8 core and run standalone gates
+      - name: Compile Java 8 core and run all gates (Windows runner)
+        if: runner.os == 'Windows'
         shell: pwsh
-        run: ./genesis.ps1 test
+        run: |
+          ./genesis.ps1 check all
+          ./genesis.ps1 build
+      - name: Compile Java 8 core and run all gates (Linux runner)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          ./genesis.sh check all
+          ./genesis.sh build
       - name: Tectonic viewer application-logic contracts
         shell: pwsh
         run: |

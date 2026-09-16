@@ -39,8 +39,87 @@ public final class Gates {
     private Gates() {}
 
     public static void main(String[] args) throws Exception {
-        if (args.length > 0 && args[0].equals("gallery")) { golden(true); RefinementGates.golden(true); RefinementDemo.writeDiagnostics(); ContinentalGates.main(args); ContinentalWorldGates.main(args); RunoffGates.diagnostics(); GeologyGates.main(args); return; }
+        if (args.length > 0 && args[0].equals("list")) {
+            System.out.println("core continents hydrology-labs tectonic rivers tectonic-viewer refinement geology all");
+            return;
+        }
+        if (args.length > 0 && args[0].equals("gallery")) {
+            String target = args.length > 1 ? args[1] : "all";
+            if (target.equals("all")) {
+                golden(true);
+                RefinementGates.golden(true);
+                RefinementDemo.writeDiagnostics();
+                ContinentalGates.main(args);
+                ContinentalWorldGates.main(args);
+                RunoffGates.diagnostics();
+                GeologyGates.main(args);
+            } else {
+                runTarget(target);
+            }
+            return;
+        }
+        String target = args.length == 0 ? "all" : args[0];
         long start = System.nanoTime();
+        runTarget(target);
+        System.out.printf("PASS %s gates (%.2f s).%n", target.toUpperCase(java.util.Locale.ROOT), (System.nanoTime() - start) / 1e9);
+    }
+
+    private static void runTarget(String target) throws Exception {
+        switch (target) {
+            case "core" -> runCore();
+            case "continents" -> {
+                TectonicGates.run();
+                CoastGates.run();
+                ContinentalGates.run();
+                ContinentalWorldGates.run();
+            }
+            case "hydrology-labs" -> {
+                HydrologyGates.run();
+                BoundarySummaryGates.run();
+                ConservativeRunoffGates.run();
+                MaritimeEnvelopeGates.run();
+                AuthoredLandmassGates.run();
+                AuthoredMosaicGates.run();
+                MixedBoundaryGates.run();
+                ActiveHydrologyGates.run();
+                PairedDrainageGates.run();
+                BoundaryForcingGates.run();
+                JunctionForcingGates.run();
+            }
+            case "tectonic" -> TectonicTerrainGates.run();
+            case "rivers" -> {
+                ActiveHydrologyGates.run();
+                ContinentalHydrologyGates.run();
+            }
+            case "tectonic-viewer" -> {
+                TectonicTerrainGates.run();
+                ActiveHydrologyGates.run();
+                ContinentalHydrologyGates.run();
+                TectonicViewGates.run();
+            }
+            case "refinement" -> {
+                CrestMeshGates.run();
+                ChannelGates.run();
+                RunoffGates.run();
+                RefinementGates.run();
+            }
+            case "geology" -> GeologyGates.run();
+            case "all" -> runAll();
+            default -> throw new IllegalArgumentException("Unknown gate target '" + target + "'. Run Gates list for valid targets.");
+        }
+    }
+
+    private static void runCore() throws Exception {
+        contracts();
+        avalanche();
+        determinism();
+        golden(false);
+        lint();
+        http();
+        budget();
+    }
+
+    private static void runAll() throws Exception {
         contracts();
         avalanche();
         TectonicGates.run();
@@ -71,7 +150,6 @@ public final class Gates {
         lint();
         http();
         budget();
-        System.out.printf("PASS M0/M1/M2a/M3a + M5a geology foundation gates (%.2f s). Production global hydrology/cascade remain deferred.%n", (System.nanoTime() - start) / 1e9);
     }
     private static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
     private static void rejects(Runnable action) {

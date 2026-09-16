@@ -18,18 +18,31 @@ A **conditioned four-child refinement kernel** now preserves inherited crossings
 
 ## Run
 
-Requires JDK 21 (`java`, `javac`, `jar` on PATH) and PowerShell. No downloaded Java dependencies, Gradle installation, Minecraft installation, or npm packages are needed for the standalone prototype.
+Requires JDK 21 (`java`, `javac`, `jar` on PATH). No downloaded Java dependencies, Gradle installation, Minecraft installation, or npm packages are needed for the standalone prototype.
 
-From this directory:
+PowerShell:
 
 ```powershell
-.\genesis.ps1 test       # Compile, package core, run automated gates
-.\genesis.ps1 serve      # Local viewer; Ctrl+C stops it
-.\genesis.ps1 gallery    # Render golden candidates without replacing baselines
-.\genesis.ps1 build      # Compile and produce build/genesis-core.jar
+.\genesis.ps1 check tectonic          # One terrain generator; also the check default
+.\genesis.ps1 check rivers            # Current continent hydrology only
+.\genesis.ps1 check tectonic-viewer   # Current terrain + rivers + HTTP viewer
+.\genesis.ps1 serve                   # Local viewer; Ctrl+C stops it
+.\genesis.ps1 build                   # Java 8 core JAR only
 ```
 
-Open [http://127.0.0.1:8787](http://127.0.0.1:8787). Use `serve -Port 8788` if the default port is occupied. On Linux CI, run the same script with `pwsh`.
+Linux:
+
+```bash
+./genesis.sh check tectonic
+./genesis.sh check rivers
+./genesis.sh check tectonic-viewer
+./genesis.sh serve 8787
+./genesis.sh build
+```
+
+Run `genesis.ps1 list` or `./genesis.sh list` for every target: `tectonic`, `rivers`, and `tectonic-viewer` cover the current generator; `continents`, `hydrology-labs`, `refinement`, `geology`, and `core` isolate older research areas. `check` defaults to `tectonic`; the complete historical suite is explicit as `check all`. The old `test` command remains an alias for the full suite. Successful commands emit only timed `OK` lines and write detailed output to `build/logs/`; failures show only the last 80 lines. Add `-VerboseOutput` on PowerShell or `--verbose` on Linux to stream everything. `gallery` defaults to the current `tectonic-viewer` vertical and accepts the same targets.
+
+Open [http://127.0.0.1:8787](http://127.0.0.1:8787). Use `serve -Port 8788` on PowerShell or `serve 8788` on Linux if the default port is occupied.
 
 The viewer puts **all field controls in a horizontal top bar above the maps**, with “View” shortcuts, checkboxes, opacity, and field-specific legends. Boundary strokes composite last. Drag to pan, scroll to zoom, or click to inspect exact field values. All parameters have sliders and numeric inputs. Synchronized A/B maps accept separate seeds and B JSON overrides such as `{"upliftStrength":1.5}`. PNG export also downloads the exact request configuration as JSON; your browser may prompt to allow multiple downloads. Export describes the last successfully displayed frame.
 
@@ -70,7 +83,7 @@ Coordinates are signed integer block positions. Bulk tiles are row-major and sam
 
 ## Validation and limits
 
-`test` runs:
+`check all` (and the compatibility alias `test`) runs:
 
 - DET: all 32 scalar fields in the legacy model over a 64×64-chunk region in raster, shuffled cached, and cold per-chunk order; additional extreme seeds/coordinates. The continental composition gate separately checks all fields with cold crops/common-point zoom and relief cache/concurrency tests.
 - API contracts: negative lattice math, chunk seams, scalar/tile/zoom equivalence, parameter validation, cache eviction, caller mutation, and concurrent reads.
@@ -103,11 +116,11 @@ Coordinates are signed integer block positions. Bulk tiles are row-major and sam
 - HTTP: assets, field metadata, inspection, image composition against direct core output, and malformed request rejection.
 - BUD: all current fields, p95 cold ≤25 ms/chunk, p95 cached ≤1 ms/chunk, and median of five 512² renders <1 s after JVM warmup for both macro elevation alone and elevation with guides/ports. Results and environment are recorded in `build/budget.json`. This excludes browser painting, PNG transport, and future terrain fields.
 
-CI targets Windows and Linux with JDK 21 and uploads gallery images, timing reports, and the core JAR. Browser automation was unavailable during implementation, so the HTTP contract and generated PNGs were checked, but interactive layout and gestures still need browser verification. Lint/hash checks are targeted guards rather than formal proofs.
+CI exercises the PowerShell runner on Windows and the Bash runner on Linux with JDK 21, then uploads gallery images, timing reports, and the core JAR. Browser automation was unavailable during implementation, so the HTTP contract and generated PNGs were checked, but interactive layout and gestures still need browser verification. Lint/hash checks are targeted guards rather than formal proofs.
 
 The inspector has scalar values, exact plate/child identities, and the M5a layered material column. Scenario loading, full geological event histories, cascade windows, scientific terrain metrics, arbitrary-size stitched exports, and production cascade/oracle comparison gates arrive with their owning milestones. HTTP image requests currently cap each dimension at 1024; core tiles cap at 2048; finite hydrology API requests cap each dimension at 256. There is no substituted external oracle or claim of global drainage correctness.
 
-To intentionally change golden output, run `gallery`, inspect the candidate PNGs, then explicitly update the corresponding reference PNGs and `.properties` manifest under `harness/golden/m0`, `m1`, `m2a`, or `m3a` in the same reviewed change as the generator update. The gallery command never changes these baselines automatically. Prior milestones' references remain independent of added fields.
+To intentionally change every historical golden output, run `gallery all`, inspect the candidate PNGs, then explicitly update the corresponding reference PNGs and `.properties` manifest under `harness/golden/m0`, `m1`, `m2a`, or `m3a` in the same reviewed change as the generator update. The gallery command never changes these baselines automatically. Prior milestones' references remain independent of added fields.
 
 ## Next
 
