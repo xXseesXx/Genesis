@@ -99,14 +99,14 @@ public final class ContinentalHydrology {
         return build(group,bounds,true);
     }
     private Root build(Group group,Bounds bounds,boolean fastReject) {
-        long start=System.nanoTime();int w=bounds.width,h=bounds.height,n=w*h,seaHeight=world.settings.seaLevel()*1000;
+        long start=System.nanoTime();int w=bounds.width,h=bounds.height,n=w*h,seaHeight=world.seaLevel()*1000;
         int[] bed=new int[n];boolean[] active=new boolean[n],sea=new boolean[n];long[] source=new long[n];
         for(int p=0;p<n;p++) {
             long x=bounds.x+(p%w)*(long)step,z=bounds.z+(p/w)*(long)step;
             if(fastReject&&!world.mayBelong(group,x,z))continue;
             var s=world.sample(x,z);if(s.continentId()!=group.id())continue;
             if(p%w==0||p%w==w-1||p/w==0||p/w==h-1)throw new IllegalStateException("Continent escaped its complete support box");
-            active[p]=true;bed[p]=millimetres(s.elevation(),world.settings.seaLevel());
+            active[p]=true;bed[p]=millimetres(s.elevation(),world.seaLevel());
         }
         // The family border is a constructed deep maritime reserve, not a watershed wall.
         // Flood only submerged family vertices touching that physical margin, then their

@@ -15,27 +15,31 @@ import java.util.Map;
 
 /** Experimental sparse-plate terrain; deterministic and bounded, with no hydrological terminals. */
 public final class TectonicTerrain {
-    public static final String VERSION="tectonic-terrain-v3";
+    public static final String VERSION="tectonic-terrain-v4";
     public record Settings(int coastBlendPermille,int seaThreshold,int landHeight,int oceanDepth,
                            int forcingPermille,int detailHeight,int seaLevel,int plateWarpPermille,
-                           int plateRoughnessPermille,int plateRelief,int plateTilt,int elevationOffset) {
+                           int plateRoughnessPermille,int plateRelief,int plateTilt,int elevationOffset,int size) {
         public Settings(int coast,int threshold,int land,int ocean,int forcing,int detail,int sea,int warp,int rough,int relief,int tilt) {
-            this(coast,threshold,land,ocean,forcing,detail,sea,warp,rough,relief,tilt,-1700);
+            this(coast,threshold,land,ocean,forcing,detail,sea,warp,rough,relief,tilt,-53,1);
+        }
+        public Settings(int coast,int threshold,int land,int ocean,int forcing,int detail,int sea,int warp,int rough,int relief,int tilt,int offset) {
+            this(coast,threshold,land,ocean,forcing,detail,sea,warp,rough,relief,tilt,offset,1);
         }
         public Settings {
             if(coastBlendPermille<40||coastBlendPermille>300||seaThreshold<200||seaThreshold>800
-                ||landHeight<100||landHeight>6000||oceanDepth<100||oceanDepth>10000||forcingPermille<0||forcingPermille>3000
-                ||detailHeight<0||detailHeight>1000||seaLevel< -2000||seaLevel>2000||plateWarpPermille<0||plateWarpPermille>300
-                ||plateRoughnessPermille<0||plateRoughnessPermille>200||plateRelief<0||plateRelief>1200||plateTilt<0||plateTilt>1200||elevationOffset< -4000||elevationOffset>0)
+                ||landHeight<4||landHeight>192||oceanDepth<4||oceanDepth>255||forcingPermille<0||forcingPermille>3000
+                ||detailHeight<0||detailHeight>64||seaLevel<1||seaLevel>254||plateWarpPermille<0||plateWarpPermille>300
+                ||plateRoughnessPermille<0||plateRoughnessPermille>200||plateRelief<0||plateRelief>96||plateTilt<0||plateTilt>96
+                ||elevationOffset< -192||elevationOffset>0||size<1||size>4)
                 throw new IllegalArgumentException("Unsupported tectonic terrain settings");
         }
-        public static Settings defaults(){return new Settings(120,500,1800,4200,1000,180,0,220,140,450,600);}
+        public static Settings defaults(){return new Settings(120,500,56,131,1000,6,63,220,140,14,19,-53,1);}
     }
     /** Retained as a supplied-fixture helper for comparison with the v1 experiment. */
     public record Crust(double fraction,int supportedSites) {}
     public record Sample(Plate owner,long continentId,int continentPlateCount,double crustFraction,
                          double baseElevation,double plateSurface,double detail,double positiveForcing,
-                         double negativeForcing,double elevation,boolean land,int crustSites,int junctionSites,
+                         double negativeForcing,double unboundedElevation,int elevation,boolean land,int crustSites,int junctionSites,
                          int plateScalePermille,double plateDatum,double plateTiltX,double plateTiltZ,
                          boolean recentFracture,double boundaryDistance) {}
     private record CrustState(double fraction,double rawSigned,double envelope,Group group) {}
@@ -48,50 +52,80 @@ public final class TectonicTerrain {
         @Override protected boolean removeEldestEntry(Map.Entry<Long,PlateResponse.Response> e){return size()>1024;}
     };
     public final Settings settings;
+    public final Params basePlateParams;
     public final Params plateParams;
     public final long seed;
 
-    /** Research preset only: sixty-four times fewer nominal plates per area than the v1 preset. */
-    public static Params defaultPlateParams(){return new Params(Map.of("plateSpacing",524288.0,"continentalPercent",53.0));}
+    /** Size-one Minecraft-native preset; Settings.size performs exact integral upscaling. */
+    public static Params defaultPlateParams(){return new Params(Map.of("plateSpacing",65536.0,"continentalPercent",53.0));}
     public TectonicTerrain(long seed,Params params,Settings settings) {
         if(params==null||settings==null)throw new IllegalArgumentException("Complete terrain configuration required");
-        this.seed=seed;this.plateParams=params;this.settings=settings;transformRatio=params.integer("transformRatio");coverage=params.integer("continentalPercent");
+        this.seed=seed;this.basePlateParams=params;this.plateParams=scaled(params,settings.size);this.settings=settings;transformRatio=params.integer("transformRatio");coverage=params.integer("continentalPercent");
         plates=new IrregularPlates(seed,params,settings.plateWarpPermille,settings.plateRoughnessPermille);groups=new ContinentalGroups(seed);
         detail=new Noise(Hash64.stream(seed,0x5445434445544149L),new Params(Map.of("wavelength",(double)Math.max(16,plates.spacing/8),"octaves",4.0)));
     }
+
+    private static Params scaled(Params base,int size) {
+        var values=new java.util.LinkedHashMap<>(base.values());
+        long spacing=Math.multiplyExact((long)base.integer("plateSpacing"),size);
+        if(spacing>1048576)throw new IllegalArgumentException("Native upscale exceeds maximum plate spacing");
+        values.put("plateSpacing",(double)spacing);return new Params(values);
+    }
+    public int worldHeight(){return 256*settings.size;}
+    public int seaLevel(){return settings.seaLevel*settings.size;}
+    private long canonical(long coordinate){return Math.floorDiv(coordinate,settings.size);}
 
     public Sample sample(long x,long z) {
         return sample(x,z,3);
     }
     /** Extended support is a diagnostic for comparison with the normal bounded query. */
     public Sample sample(long x,long z,int supportRadius) {
-        Lattice.check(x);Lattice.check(z);var partition=plates.sample(x,z,supportRadius);Site site=partition.owner();
-        CrustState crust=continental(site,partition.candidates(),x,z,true);
+        Lattice.check(x);Lattice.check(z);long cx=canonical(x),cz=canonical(z);var partition=plates.sample(cx,cz,supportRadius);Site site=partition.owner();
+        CrustState crust=continental(site,partition.candidates(),cx,cz,true);
         double threshold=settings.seaThreshold/1000.0;
         double signed=(crust.fraction-threshold)/(crust.fraction<threshold?threshold:1-threshold);
         double envelope=crust.envelope;
-        double plateSurface=plateSurface(partition.candidates(),x,z)*envelope;
-        double base=signed*(signed<0?settings.oceanDepth:settings.landHeight)*envelope
-            -Math.max(4000,settings.oceanDepth)*(1-envelope)+plateSurface+settings.elevationOffset;
-        double small=detail.sample(x,z)*settings.detailHeight*signed*signed*envelope;
-        var forcing=forcing(partition,x,z);double gain=settings.forcingPermille/1000.0;
-        double positive=forcing.positive()*gain*envelope,negative=forcing.negative()*gain*envelope,elevation=base+small+positive+negative;
-        Plate owner=site.plate(crust.rawSigned>=0?1:0);double boundary=boundaryDistance(partition);
+        double plateSurface=plateSurface(partition.candidates(),cx,cz)*envelope;
+        double base=settings.seaLevel+signed*(signed<0?settings.oceanDepth:settings.landHeight)*envelope
+            -Math.max(125,settings.oceanDepth)*(1-envelope)+plateSurface+settings.elevationOffset;
+        double small=detail.sample(cx,cz)*settings.detailHeight*signed*signed*envelope;
+        var forcing=forcing(partition,cx,cz);double gain=settings.forcingPermille/(32_000.0);
+        double positive=forcing.positive()*gain*envelope,negative=forcing.negative()*gain*envelope,unbounded=base+small+positive+negative;
+        int surface=boundedSurface(unbounded);Plate owner=scaled(site.plate(crust.rawSigned>=0?1:0));double boundary=boundaryDistance(partition)*settings.size;
         var response=response(site);
-        return new Sample(owner,crust.group.id(),crust.group.size(),crust.fraction,base,plateSurface,small,positive,negative,elevation,
-            elevation>settings.seaLevel,crust.group.size(),forcing.supportedPlates(),site.scalePermille(),
-            response.datum()*settings.plateRelief,response.tiltX()*settings.plateTilt,
-            response.tiltZ()*settings.plateTilt,site.recentFracture(),boundary);
+        int scale=settings.size;
+        return new Sample(owner,crust.group.id(),crust.group.size(),crust.fraction,base*scale,plateSurface*scale,small*scale,positive*scale,negative*scale,unbounded*scale,surface*scale,
+            surface>settings.seaLevel,crust.group.size(),forcing.supportedPlates(),site.scalePermille(),
+            response.datum()*settings.plateRelief*scale,response.tiltX()*settings.plateTilt*scale,
+            response.tiltZ()*settings.plateTilt*scale,site.recentFracture(),boundary);
     }
 
-    public Site plateSite(long i,long j){return plates.site(i,j);}
+    /** Smoothly fits the unbounded tectonic signal into vanilla's finite build column. */
+    private int boundedSurface(double unbounded) {
+        int sea=settings.seaLevel;double bounded;
+        if(unbounded<sea) {
+            double range=sea-1.0,depth=sea-unbounded;
+            bounded=sea-range*(1-StrictMath.exp(-depth/Math.max(1,settings.oceanDepth)));
+        } else if(unbounded>sea) {
+            double range=255.0-sea,rise=unbounded-sea,relief=Math.max(1,settings.landHeight+settings.plateRelief+settings.plateTilt);
+            bounded=sea+range*(1-StrictMath.exp(-rise/relief));
+        } else return sea;
+        int y=(int)Math.round(bounded);
+        if(unbounded>sea)y=Math.max(sea+1,y);else y=Math.min(sea,y);
+        return Math.max(1,Math.min(255,y));
+    }
+
+    public Site plateSite(long i,long j){return scaled(plates.site(i,j));}
     /** Query-independent plate descriptor uses the local crust state at its own anchor. */
     public Plate plate(long i,long j) {
         Site site=plates.site(i,j);var candidates=plates.sample(site.x(),site.z()).candidates();
-        return site.plate(continental(site,candidates,site.x(),site.z(),false).rawSigned>=0?1:0);
+        return scaled(site.plate(continental(site,candidates,site.x(),site.z(),false).rawSigned>=0?1:0));
     }
     public Group continent(long i,long j){return groups.group(i,j);}
-    public boolean mayBelong(Group group,long x,long z){return plates.mayOwn(group.members(),x,z);}
+    public boolean mayBelong(Group group,long x,long z){Lattice.check(x);Lattice.check(z);return plates.mayOwn(group.members(),canonical(x),canonical(z));}
+
+    private Plate scaled(Plate p){int s=settings.size;return new Plate(p.id(),Math.multiplyExact(p.x(),s),Math.multiplyExact(p.z(),s),p.vx(),p.vz(),p.crust(),p.age());}
+    private Site scaled(Site p){int s=settings.size;return new Site(p.i(),p.j(),p.id(),Math.multiplyExact(p.x(),s),Math.multiplyExact(p.z(),s),p.vx(),p.vz(),p.age(),p.scalePermille(),p.powerWeightQ(),p.datumQ(),p.tiltXQ(),p.tiltZQ(),p.recentFracture());}
 
     private PlateResponse.Response response(Site site) {
         synchronized(responses) {
@@ -106,12 +140,13 @@ public final class TectonicTerrain {
 
     /** Closest competing power cell with candidate-local crust. */
     public BoundaryForcing.Sample boundary(long x,long z) {
-        var partition=plates.sample(x,z);Scored a=partition.candidates().get(0),b=partition.candidates().get(1);
-        Plate pa=a.site().plate(continental(a.site(),partition.candidates(),x,z,false).rawSigned>=0?1:0);
-        Plate pb=b.site().plate(continental(b.site(),partition.candidates(),x,z,false).rawSigned>=0?1:0);
+        Lattice.check(x);Lattice.check(z);long cx=canonical(x),cz=canonical(z);var partition=plates.sample(cx,cz);Scored a=partition.candidates().get(0),b=partition.candidates().get(1);
+        Plate pa=a.site().plate(continental(a.site(),partition.candidates(),cx,cz,false).rawSigned>=0?1:0);
+        Plate pb=b.site().plate(continental(b.site(),partition.candidates(),cx,cz,false).rawSigned>=0?1:0);
         var edge=BoundaryForcing.describe(pa,pb,transformRatio);double u=pairOffset(edge,a,b);
         int quantized=(int)Math.max(-1000,Math.min(1000,Math.round(u*1000)));
-        return new BoundaryForcing.Sample(edge,quantized,BoundaryForcing.anomaly(edge,quantized));
+        var scaledEdge=BoundaryForcing.describe(scaled(pa),scaled(pb),transformRatio);
+        return new BoundaryForcing.Sample(scaledEdge,quantized,(int)Math.round(BoundaryForcing.anomaly(edge,quantized)*settings.size/32.0));
     }
 
     private JunctionForcing.Sample forcing(IrregularPlates.Sample partition,long x,long z) {

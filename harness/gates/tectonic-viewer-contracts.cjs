@@ -13,12 +13,14 @@ async function run(){
     setAttribute(name,value){this[name]=value;}addEventListener(name,fn){this.events[name]=fn;}
     getBoundingClientRect(){return {left:0,top:0,width:384,height:384};}setPointerCapture(){}
     getContext(){return {drawImage(){}};}click(){if(this.download)downloads.push({name:this.download,url:this.href});this.onclick?.({preventDefault(){}});}
+    async requestFullscreen(){context.document.fullscreenElement=this;context.document.events.fullscreenchange?.();}
   }
   for(const match of html.matchAll(/<[^>]*\bid="([^"]+)"[^>]*>/g)){const e=new Element();e.id=match[1];e.value=/\bvalue="([^"]*)"/.exec(match[0])?.[1]||'';}
   elements.get('map').width=384;elements.get('map').height=384;
   const body=new Element('body'),blobs=new Map();let slowNextRender=false,slowNextPoint=false,urlIndex=0;
   class LocalURL extends URL{static createObjectURL(blob){const id='blob:test-'+urlIndex++;blobs.set(id,blob);return id;}static revokeObjectURL(){}}
-  const context=vm.createContext({document:{body,getElementById:id=>{assert(elements.has(id),'Missing DOM node '+id);return elements.get(id);},createElement:tag=>new Element(tag)},
+  const document={body,events:{},fullscreenElement:null,getElementById:id=>{assert(elements.has(id),'Missing DOM node '+id);return elements.get(id);},createElement:tag=>new Element(tag),addEventListener(name,fn){this.events[name]=fn;},async exitFullscreen(){this.fullscreenElement=null;this.events.fullscreenchange?.();}};
+  const context=vm.createContext({document,
     location:{search:'?seed=-9223372036854775808&crustProvinceScale=4&crustRadiusPermille=1500&plateSpacing=65536'},history:{replaceState(_a,_b,url){context.savedURL=url;}},URL:LocalURL,URLSearchParams,AbortController,Blob,setTimeout,clearTimeout,
     fetch:async(url,options)=>{requests.push(String(url));const slow=String(url).startsWith('/api/tectonic/render')&&slowNextRender,point=String(url).startsWith('/api/tectonic/sample')&&slowNextPoint;
       if(slow)slowNextRender=false;if(point)slowNextPoint=false;const response=await fetch(new URL(url,base),slow?{}:options);
@@ -29,18 +31,20 @@ async function run(){
   evaluate(fs.readFileSync('harness/viewer/tectonics.js','utf8'));
   async function settled(){const end=Date.now()+20000;while(Date.now()<end){if(elements.get('error').textContent)throw Error(elements.get('error').textContent);if(evaluate('state.completeRevision>0&&state.completeRevision===state.revision'))return;await new Promise(r=>setTimeout(r,20));}throw Error('Viewer render timeout');}
   await settled();assert.equal(evaluate('state.committed.seed'),'-9223372036854775808');assert.equal(elements.get('layers').children.length,33);
-  assert.match(context.savedURL,/plateWarpPermille=220/);assert.equal(evaluate('Object.keys(state.committed.params).length'),19);
-  assert.match(context.savedURL,/version=tectonic-terrain-v3/);assert.doesNotMatch(context.savedURL,/crustProvinceScale/);
-  assert.equal(evaluate('state.params.elevationOffset'),-1700);assert.match(context.savedURL,/contourInterval=25/);
+  assert.match(context.savedURL,/plateWarpPermille=220/);assert.equal(evaluate('Object.keys(state.committed.params).length'),20);
+  assert.match(context.savedURL,/version=tectonic-terrain-v4/);assert.doesNotMatch(context.savedURL,/crustProvinceScale/);
+  assert.equal(evaluate('state.params.elevationOffset'),-53);assert.equal(evaluate('state.params.size'),1);assert.match(context.savedURL,/contourInterval=5/);
   assert.match(context.savedURL,/hydrologyVersion=continental-hydrology-v1/);assert.equal(evaluate('state.params.rainfallMm'),1000);
-  assert.equal(evaluate('state.params.plateSpacing'),524288);assert.equal(elements.get('upgradeNotice').hidden,false);
+  assert.equal(evaluate('state.params.plateSpacing'),65536);assert.equal(elements.get('upgradeNotice').hidden,false);assert.match(elements.get('nativeScale').textContent,/height 256 · sea Y 63/);
   // Small fixture canvas for repeated field checks; Java HTTP gates separately check real render pixels.
   elements.get('map').width=8;elements.get('map').height=8;
   for(const button of elements.get('layers').children){button.click();await settled();assert.equal(evaluate('state.committed.layer'),button.dataset.field);assert.equal(button['aria-pressed'],'true');}
   evaluate("state.layer='heightMap';render()");await settled();assert.equal(elements.get('heightLegend').hidden,false);
-  elements.get('contourInterval').value='5';elements.get('contourInterval').events.change();await settled();assert.equal(evaluate('state.committed.contourInterval'),5);assert.match(context.savedURL,/contourInterval=5/);assert.match(elements.get('contourState').textContent,/requested 5 m/);
-  elements.get('contourInterval').value='4';elements.get('contourInterval').events.change();assert.match(elements.get('error').textContent,/Contour spacing/);assert.equal(evaluate('state.contourInterval'),5);
-  elements.get('contourInterval').value='5';evaluate('error("")');
+  elements.get('contourInterval').value='1';elements.get('contourInterval').events.change();await settled();assert.equal(evaluate('state.committed.contourInterval'),1);assert.match(context.savedURL,/contourInterval=1/);assert.match(elements.get('contourState').textContent,/requested 1/);
+  elements.get('contourInterval').value='257';elements.get('contourInterval').events.change();assert.match(elements.get('error').textContent,/Contour spacing/);assert.equal(evaluate('state.contourInterval'),1);
+  elements.get('contourInterval').value='1';evaluate('error("")');
+  elements.get('fullscreen').click();await settled();assert.equal(document.fullscreenElement,elements.get('mapPanel'));assert.equal(elements.get('map').width,512);
+  elements.get('exitFullscreen').click();await settled();assert.equal(document.fullscreenElement,null);assert.equal(elements.get('map').width,384);
   const oldStep=evaluate('state.step');elements.get('zoomIn').click();await settled();assert.equal(evaluate('state.step'),oldStep/2);
   const oldX=evaluate('state.x');elements.get('map').events.keydown({key:'ArrowRight',preventDefault(){}});await settled();assert.equal(evaluate('state.x'),oldX+48*oldStep/2);
   await evaluate('inspect({x:2,z:3})');assert.equal(elements.get('inspection').children.length,66);assert.doesNotMatch(elements.get('inspectCoords').textContent,/loading/);assert.match(elements.get('waterSummary').textContent,/Complete family/);
@@ -51,15 +55,15 @@ async function run(){
   slowNextRender=true;evaluate("state.layer='elevation';render()");evaluate("state.layer='land';render()");await settled();await new Promise(r=>setTimeout(r,500));assert.equal(evaluate('state.committed.layer'),'land');
   slowNextPoint=true;const pending=evaluate('inspect({x:1,z:1})');evaluate("state.layer='base';render()");await settled();await pending;assert.equal(elements.get('inspection').children.length,0);
   elements.get('export').click();assert.equal(downloads.length,2);const config=JSON.parse(await blobs.get(downloads[1].url).text());assert.equal(config.model,'tectonic-experimental');assert.equal(config.seed,'-9223372036854775808');assert.equal(config.layer,'base');assert.equal(config.params.forcingPermille,0);assert.equal(config.waterStatus,'coarse continent overflow; fine realization pending');assert.equal(config.hydrologyVersion,'continental-hydrology-v1');
-  assert.equal(config.contourInterval,5);assert.equal(config.params.elevationOffset,-1700);
+  assert.equal(config.contourInterval,1);assert.equal(config.params.elevationOffset,-53);assert.equal(config.params.size,1);
   elements.get('seed').value='9223372036854775808';elements.get('worldForm').events.submit({preventDefault(){}});assert.match(elements.get('error').textContent,/signed 64-bit/);
   elements.get('seed').value='42';elements.get('p-plateWarpPermille').value='301';elements.get('worldForm').events.submit({preventDefault(){}});assert.match(elements.get('error').textContent,/Invalid Plate-edge warp/);
-  elements.get('reset').click();await settled();assert.equal(evaluate('state.seed'),'42');assert.equal(evaluate('state.params.plateSpacing'),524288);assert.equal(evaluate('state.params.plateWarpPermille'),220);
-  assert.equal(evaluate('state.contourInterval'),25);assert.equal(evaluate('state.params.elevationOffset'),-1700);
+  elements.get('reset').click();await settled();assert.equal(evaluate('state.seed'),'42');assert.equal(evaluate('state.params.plateSpacing'),65536);assert.equal(evaluate('state.params.plateWarpPermille'),220);
+  assert.equal(evaluate('state.contourInterval'),5);assert.equal(evaluate('state.params.elevationOffset'),-53);assert.equal(evaluate('state.params.size'),1);
   elements.get('p-rainfallMm').value='0';elements.get('worldForm').events.submit({preventDefault(){}});await settled();assert.equal(evaluate('state.committed.params.rainfallMm'),0);assert.match(context.savedURL,/rainfallMm=0/);
   elements.get('p-rainfallMm').value='10001';elements.get('worldForm').events.submit({preventDefault(){}});assert.match(elements.get('error').textContent,/Invalid Uniform rainfall/);
   elements.get('reset').click();await settled();assert.equal(evaluate('state.params.rainfallMm'),1000);
-  assert(requests.filter(x=>x.startsWith('/api/tectonic/render')).every(x=>x.includes('continentalPercent=')&&x.includes('seaLevel=')&&x.includes('plateRoughnessPermille=')));
-  console.log('PASS TECTONIC VIEWER LOGIC: 33 layers, 19 world parameters, rainfall/dryness/version/ledger, contours/export, exact seed, navigation, inspector and stale responses; not browser visual QA');
+  assert(requests.filter(x=>x.startsWith('/api/tectonic/render')).every(x=>x.includes('continentalPercent=')&&x.includes('seaLevel=')&&x.includes('size=')&&x.includes('plateRoughnessPermille=')));
+  console.log('PASS TECTONIC VIEWER LOGIC: 33 layers, 20 parameters, native scale/fullscreen, rainfall/version/ledger, contours/export, exact seed, navigation, inspector and stale responses');
 }
 run().catch(error=>{console.error(error);process.exitCode=1;});

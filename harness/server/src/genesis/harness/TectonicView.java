@@ -26,32 +26,32 @@ final class TectonicView {
     static final String MODEL="tectonic-experimental";
     record Spec(String id,String label,int value,int min,int max,int step) {}
     static final List<Spec> SPECS=List.of(
-        new Spec("plateSpacing","Plate spacing",524288,8192,1048576,4096),new Spec("plateJitter","Plate-site jitter %",50,0,50,1),
+        new Spec("size","Native upscale (1 = 256 high)",1,1,4,1),new Spec("plateSpacing","Base plate spacing at size 1",65536,8192,262144,4096),new Spec("plateJitter","Plate-site jitter %",50,0,50,1),
         new Spec("plateSpeed","Motion component limit",64,1,128,1),new Spec("transformRatio","Transform threshold %",35,0,100,1),
         new Spec("continentalPercent","Crust extent (not land %)",53,0,100,1),new Spec("crustAgeMax","Synthetic age maximum",3000,100,4500,100),
         new Spec("coastBlendPermille","Coast blend width / S",120,40,300,10),
-        new Spec("seaThreshold","Base coast fraction, permille",500,200,800,10),new Spec("landHeight","Continental base height",1800,100,6000,100),
-        new Spec("oceanDepth","Oceanic base depth",4200,100,10000,100),new Spec("forcingPermille","Boundary relief gain, permille",1000,0,3000,50),
-        new Spec("detailHeight","Small-detail amplitude",180,0,1000,10),new Spec("seaLevel","Fixed sea-level datum",0,-2000,2000,25),
+        new Spec("seaThreshold","Base coast fraction, permille",500,200,800,10),new Spec("landHeight","Continental relief, size-1 blocks",56,4,192,1),
+        new Spec("oceanDepth","Oceanic relief, size-1 blocks",131,4,255,1),new Spec("forcingPermille","Boundary relief gain, permille",1000,0,3000,50),
+        new Spec("detailHeight","Small-detail amplitude, blocks",6,0,64,1),new Spec("seaLevel","Size-1 sea Y",63,1,254,1),
         new Spec("plateWarpPermille","Plate-edge warp / S",220,0,300,10),new Spec("plateRoughnessPermille","Plate-edge serration",140,0,200,10),
-        new Spec("plateRelief","Motion-driven height gain",450,0,1200,50),new Spec("plateTilt","Motion-driven tilt gain",600,0,1200,50),
-        new Spec("elevationOffset","Global bed offset (30% land preset)",-1700,-4000,0,25),
+        new Spec("plateRelief","Motion-driven datum, blocks",14,0,96,1),new Spec("plateTilt","Motion-driven tilt, blocks",19,0,96,1),
+        new Spec("elevationOffset","Relative bed offset, blocks",-53,-192,0,1),
         new Spec("rainfallMm","Uniform rainfall (model mm/year)",1000,0,10000,100));
     enum Layer {
-        elevation("Terrain","Absolute model height; coast at the configured sea level",-4500,4000),
-        heightMap("Height + contours","High-contrast elevation relative to sea level, in model metres; contours are display-only",-6000,3000),
+        elevation("Terrain","Minecraft-native surface Y; size 1 is bounded to 1..255 with sea at Y=63",0,255),
+        heightMap("Height + contours","Minecraft-native surface blocks with fixed colors and display-only contours",0,255),
         riverMap("Rivers + lakes","Complete continent overflow and rainfall-weighted coarse rivers; not carved fine terrain",0,1),
         rainfall("Rainfall","Barebones uniform map, model mm/year; replaceable coordinate-local climate input",0,10000),
         runoff("River discharge","Nearest canonical node runoff, in billions of rain-mm × model-block²/year",0,100000),
-        lakeDepth("Depression fill","Potential fill to the lowest spill path, model metres; assumes eventual filling",0,1000),
-        waterSurface("Spill surface","Nearest canonical node's minimum overflow level, absolute model metres",-2000,4000),
+        lakeDepth("Depression fill","Potential fill to the lowest spill path, Minecraft blocks; assumes eventual filling",0,64),
+        waterSurface("Spill surface","Nearest canonical node's minimum overflow surface Y",0,255),
         drainageStatus("Drainage status","0 unavailable/unresolved; 1 routed; 2 prescribed maritime-reserve water",0,2),
-        base("Crustal base","Continental/oceanic base plus the smoothly joined plate surface",-5000,3000),
-        plateSurface("Plate surface","Per-plate datum and tilt, softly joined near boundaries",-1600,1600),
-        forcing("Boundary relief","Sum of positive and negative net pair contributions",-1600,1600),
-        positive("Positive relief","Positive net pair contributions, not uplift per year",0,1600),
-        negative("Negative relief","Negative net pair contributions, not subsidence per year",-1600,0),
-        detail("Small detail","Subordinate four-octave interior detail",-180,180),
+        base("Crustal base","Unbounded native-block base before detail and final build-height fit",-192,255),
+        plateSurface("Plate surface","Per-plate datum and tilt in native blocks, softly joined near boundaries",-96,96),
+        forcing("Boundary relief","Positive plus negative boundary relief in native blocks",-96,96),
+        positive("Positive relief","Positive boundary relief in native blocks, not uplift per year",0,96),
+        negative("Negative relief","Negative boundary relief in native blocks, not subsidence per year",-96,0),
+        detail("Small detail","Subordinate four-octave native-block detail",-64,64),
         land("Land / low bed","Tan above fixed sea level; blue is NOT certified ocean",0,1),
         crustFraction("Crust blend","Continental body support before the deep inter-family margin",0,1),
         continentId("Continent identity","Exact seeded plate-family identity; colors do not imply height",0,1),
@@ -59,9 +59,9 @@ final class TectonicView {
         plateCrust("Local plate crust","Crust at this location; plates are not globally land or ocean",0,1),
         plateId("Plate identity","Colors hash exact IDs; inspect for the full integer",0,1),
         plateScale("Plate scale","Seeded relative plate-size class in permille",600,1800),
-        plateDatum("Plate datum","Motion-driven owner height before global offset; compression raises, extension lowers",-6800,6800),
-        plateTiltX("Plate tilt X","Motion-driven height change across S toward +X; compressed side rises",-6800,6800),
-        plateTiltZ("Plate tilt Z","Motion-driven height change across S toward +Z; compressed side rises",-6800,6800),
+        plateDatum("Plate datum","Motion-driven owner height in native blocks; compression raises, extension lowers",-192,192),
+        plateTiltX("Plate tilt X","Native-block height change across S toward +X; compressed side rises",-192,192),
+        plateTiltZ("Plate tilt Z","Native-block height change across S toward +Z; compressed side rises",-192,192),
         recentFracture("Recent fracture","Synthetic young small-plate class; no time-evolving fracture history",0,1),
         boundaryDistance("Boundary distance","Approximate signed-score distance to the closest competing plate",0,1048576),
         velocityX("Motion X","Candidate plate velocity X in model units",-128,128),
@@ -98,13 +98,13 @@ final class TectonicView {
             if(List.of("plateSpacing","plateJitter","plateSpeed","transformRatio","continentalPercent","crustAgeMax").contains(s.id))plate.put(s.id,(double)value);}
         var config=new Settings(settings.get("coastBlendPermille"),settings.get("seaThreshold"),settings.get("landHeight"),settings.get("oceanDepth"),
             settings.get("forcingPermille"),settings.get("detailHeight"),settings.get("seaLevel"),settings.get("plateWarpPermille"),
-            settings.get("plateRoughnessPermille"),settings.get("plateRelief"),settings.get("plateTilt"),settings.get("elevationOffset"));
-        long seed=number(query,"seed",42),x=number(query,"x",-786432),z=number(query,"z",-786432),step=number(query,"step",4096);
+            settings.get("plateRoughnessPermille"),settings.get("plateRelief"),settings.get("plateTilt"),settings.get("elevationOffset"),settings.get("size"));
+        long seed=number(query,"seed",42),x=number(query,"x",-98304),z=number(query,"z",-98304),step=number(query,"step",512);
         int width=Math.toIntExact(number(query,"width",384)),height=Math.toIntExact(number(query,"height",384));
         if(width<1||height<1||width>512||height>512||step<1||step>1048576)throw new IllegalArgumentException("Dimensions 1..512; step 1..1048576 required");
         Lattice.check(x);Lattice.check(z);Lattice.check(Math.addExact(x,Math.multiplyExact(width-1L,step)));Lattice.check(Math.addExact(z,Math.multiplyExact(height-1L,step)));
-        int contours=Math.toIntExact(number(query,"contourInterval",25));
-        if(contours!=0&&(contours<5||contours>1000))throw new IllegalArgumentException("Contour interval: 0 (off) or 5..1000 model metres");
+        int contours=Math.toIntExact(number(query,"contourInterval",5));
+        if(contours!=0&&(contours<1||contours>256))throw new IllegalArgumentException("Contour interval: 0 (off) or 1..256 blocks");
         var world=new TectonicTerrain(seed,new Params(plate),config);
         return new Request(world,x,z,step,width,height,Layer.valueOf(query.getOrDefault("layer","elevation")),contours,hydrology(world,settings.get("rainfallMm")));
     }
@@ -125,6 +125,8 @@ final class TectonicView {
         exchange.getResponseHeaders().set("X-Render-Ms",Double.toString(result.nanos/1e6));exchange.getResponseHeaders().set("X-Land-Fraction",Double.toString(result.landFraction));
         exchange.getResponseHeaders().set("X-Contour-Interval",Integer.toString(contourInterval(request)));
         exchange.getResponseHeaders().set("X-Hydrology-Version",ContinentalHydrology.VERSION);
+        exchange.getResponseHeaders().set("X-World-Height",Integer.toString(request.world.worldHeight()));exchange.getResponseHeaders().set("X-Sea-Level",Integer.toString(request.world.seaLevel()));
+        exchange.getResponseHeaders().set("X-Native-Scale",Integer.toString(request.world.settings.size()));
         Server.send(exchange,200,"image/png",out.toByteArray());
     }
     static Raster render(Request r) {
@@ -148,9 +150,9 @@ final class TectonicView {
         for(int z=0;z<r.height;z++)for(int x=0;x<r.width;x++) {
             long wx=r.x+x*r.step,wz=r.z+z*r.step;var s=samples==null?r.world.sample(wx,wz):samples[z*r.width+x];if(s.land())land++;
             if(samples!=null){image.setRGB(x,z,hydroColor(r,s,roots.get(familyIds[z*r.width+x]),wx,wz).getRGB());continue;}
-            if(r.layer==Layer.rainfall){image.setRGB(x,z,color(r.layer,r.hydro.rain(wx,wz),0,0).getRGB());continue;}
+            if(r.layer==Layer.rainfall){image.setRGB(x,z,color(r.layer,r.hydro.rain(wx,wz),0,1,0).getRGB());continue;}
             double value=value(r.world,s,r.layer,wx,wz);long id=r.layer==Layer.continentId?s.continentId():s.owner().id();
-            image.setRGB(x,z,color(r.layer,value,r.world.settings.seaLevel(),id).getRGB());
+            image.setRGB(x,z,color(r.layer,value,r.world.seaLevel(),r.world.settings.size(),id).getRGB());
             if(heights!=null)heights[z][x]=s.elevation();
         }
         if(heights!=null) {
@@ -158,7 +160,7 @@ final class TectonicView {
             for(int z=0;z<r.height;z++)heights[z][r.width]=r.world.sample(Math.min(Lattice.MAX_COORDINATE,r.x+r.width*r.step),r.z+z*r.step).elevation();
             for(int x=0;x<r.width;x++)heights[r.height][x]=r.world.sample(r.x+x*r.step,Math.min(Lattice.MAX_COORDINATE,r.z+r.height*r.step)).elevation();
             for(int z=0;z<r.height;z++)for(int x=0;x<r.width;x++) {
-                double h=heights[z][x]-r.world.settings.seaLevel(),gradient=StrictMath.hypot(heights[z][x+1]-heights[z][x],heights[z+1][x]-heights[z][x]);
+                double h=heights[z][x]-r.world.seaLevel(),gradient=StrictMath.hypot(heights[z][x+1]-heights[z][x],heights[z+1][x]-heights[z][x]);
                 image.setRGB(x,z,contourColor(new Color(image.getRGB(x,z)),h,gradient,interval).getRGB());
             }
         }
@@ -176,9 +178,9 @@ final class TectonicView {
     }
     private static Color hydroColor(Request r,Sample s,Root root,long x,long z) {
         int p=root==null?-1:root.index(x,z);if(root==null||root.status(p)==0)return new Color(184,96,159);
-        if(r.layer!=Layer.riverMap)return color(r.layer,hydroValue(root,p,r.layer),r.world.settings.seaLevel(),0);
-        Color base=color(Layer.elevation,s.elevation(),r.world.settings.seaLevel(),0);
-        if(root.status(p)==2&&s.elevation()<=r.world.settings.seaLevel())return base;
+        if(r.layer!=Layer.riverMap)return color(r.layer,hydroValue(root,p,r.layer),r.world.seaLevel(),r.world.settings.size(),0);
+        Color base=color(Layer.elevation,s.elevation(),r.world.seaLevel(),r.world.settings.size(),0);
+        if(root.status(p)==2&&s.elevation()<=r.world.seaLevel())return base;
         if(root.lakeDepth(p)>.05&&root.flux(p)>0&&s.elevation()<root.filled(p)/1000.0)base=blend(new Color(64,157,181),new Color(24,90,143),root.lakeDepth(p)/250);
         var river=root.river(x,z);
         if(river.flux()>0) {
@@ -213,15 +215,15 @@ final class TectonicView {
             case regime->w.boundary(x,z).edge().regime().ordinal();case normal->w.boundary(x,z).edge().normalQ()/1024.0;case shear->w.boundary(x,z).edge().shearQ()/1024.0;
             case riverMap,rainfall,runoff,lakeDepth,waterSurface,drainageStatus->throw new IllegalArgumentException("Drainage fields require the complete hydrology context");};
     }
-    static Color color(Layer layer,double value,int seaLevel,long id) {
+    static Color color(Layer layer,double value,int seaLevel,int size,long id) {
         if(layer==Layer.rainfall)return blend(new Color(235,223,172),new Color(31,117,176),value/2500);
         if(layer==Layer.runoff)return blend(new Color(241,236,215),new Color(12,75,159),StrictMath.log1p(value)/StrictMath.log(10001));
-        if(layer==Layer.lakeDepth)return blend(new Color(240,234,210),new Color(29,112,174),StrictMath.log1p(value)/StrictMath.log(501));
-        if(layer==Layer.waterSurface)return color(Layer.heightMap,value,seaLevel,0);
+        if(layer==Layer.lakeDepth)return blend(new Color(240,234,210),new Color(29,112,174),StrictMath.log1p(value/size)/StrictMath.log(65));
+        if(layer==Layer.waterSurface)return color(Layer.heightMap,value,seaLevel,size,0);
         if(layer==Layer.drainageStatus)return value==0?new Color(184,96,159):value==2?new Color(30,93,147):new Color(114,160,101);
         if(layer==Layer.heightMap) {
-            double h=value-seaLevel;
-            double[] stops={-6000,-3000,-1000,-200,0,100,300,600,1000,1800,3000};
+            double h=(value-seaLevel)/size;
+            double[] stops={-63,-40,-24,-8,0,8,24,48,80,128,192};
             int[] colors={0x11183f,0x254f9d,0x187ab5,0x56c9ce,0xb5eee0,0x4caa66,0xa4c75a,0xead369,0xe79848,0xb55358,0xf5dced};
             if(h<stops[0])return new Color(colors[0]);
             for(int k=1;k<stops.length;k++)if(h<stops[k])return blend(new Color(colors[k-1]),new Color(colors[k]),(h-stops[k-1])/(stops[k]-stops[k-1]));
@@ -230,15 +232,18 @@ final class TectonicView {
         if(layer==Layer.plateId||layer==Layer.continentId){long h=Hash64.mix(id);return new Color(70+(int)(h&127),70+(int)((h>>>8)&127),70+(int)((h>>>16)&127));}
         if(layer==Layer.regime)return new Color[]{new Color(175,183,190),new Color(164,94,57),new Color(148,78,141),new Color(78,154,148),new Color(73,123,179),new Color(125,169,101),new Color(191,161,77)}[(int)value];
         if(layer==Layer.elevation||layer==Layer.base) {
-            double h=value-seaLevel;if(h<=0)return blend(new Color(105,177,189),new Color(16,44,76),-h/4500);
-            if(h<600)return blend(new Color(183,187,126),new Color(104,142,82),h/600);
-            if(h<2000)return blend(new Color(104,142,82),new Color(147,125,100),(h-600)/1400);
-            return blend(new Color(147,125,100),new Color(240,242,240),(h-2000)/1800);
+            double h=(value-seaLevel)/size;if(h<=0)return blend(new Color(105,177,189),new Color(16,44,76),-h/63);
+            if(h<32)return blend(new Color(183,187,126),new Color(104,142,82),h/32);
+            if(h<96)return blend(new Color(104,142,82),new Color(147,125,100),(h-32)/64);
+            return blend(new Color(147,125,100),new Color(240,242,240),(h-96)/96);
         }
         if(layer==Layer.crustFraction||layer==Layer.plateCrust||layer==Layer.land||layer==Layer.recentFracture)return blend(new Color(35,74,114),new Color(191,160,103),value);
-        if(layer==Layer.age||layer==Layer.junctionSites||layer==Layer.continentPlateCount||layer==Layer.plateScale||layer==Layer.boundaryDistance)
-            return blend(new Color(223,232,227),new Color(112,69,134),(value-layer.min)/(layer.max-layer.min));
-        return blend(new Color(237,238,231),value>=0?new Color(175,67,40):new Color(38,101,171),Math.abs(value)/Math.max(Math.abs(layer.min),Math.abs(layer.max)));
+        if(layer==Layer.age||layer==Layer.junctionSites||layer==Layer.continentPlateCount||layer==Layer.plateScale||layer==Layer.boundaryDistance) {
+            double shown=layer==Layer.boundaryDistance?value/size:value;
+            return blend(new Color(223,232,227),new Color(112,69,134),(shown-layer.min)/(layer.max-layer.min));
+        }
+        double shown=value/size;
+        return blend(new Color(237,238,231),shown>=0?new Color(175,67,40):new Color(38,101,171),Math.abs(shown)/Math.max(Math.abs(layer.min),Math.abs(layer.max)));
     }
     private static Color blend(Color a,Color b,double t){t=Math.max(0,Math.min(1,t));return new Color((int)(a.getRed()+(b.getRed()-a.getRed())*t),(int)(a.getGreen()+(b.getGreen()-a.getGreen())*t),(int)(a.getBlue()+(b.getBlue()-a.getBlue())*t));}
     static String sampleJson(Request r) {
@@ -247,7 +252,8 @@ final class TectonicView {
         int node=root==null?-1:root.index(r.x,r.z);int status=root==null?0:root.status(node);
         StringBuilder out=new StringBuilder("{\"model\":").append(Server.quote(MODEL)).append(",\"version\":").append(Server.quote(TectonicTerrain.VERSION))
             .append(",\"hydrologyVersion\":").append(Server.quote(ContinentalHydrology.VERSION))
-            .append(",\"seed\":").append(Server.quote(Long.toString(r.world.seed))).append(",\"x\":").append(Server.quote(Long.toString(r.x))).append(",\"z\":").append(Server.quote(Long.toString(r.z))).append(",\"fields\":{");
+            .append(",\"seed\":").append(Server.quote(Long.toString(r.world.seed))).append(",\"x\":").append(Server.quote(Long.toString(r.x))).append(",\"z\":").append(Server.quote(Long.toString(r.z)))
+            .append(",\"worldHeight\":").append(r.world.worldHeight()).append(",\"seaLevel\":").append(r.world.seaLevel()).append(",\"size\":").append(r.world.settings.size()).append(",\"fields\":{");
         for(var layer:Layer.values()){if(out.charAt(out.length()-1)!='{')out.append(',');out.append(Server.quote(layer.name())).append(':');
             if(layer==Layer.plateId)out.append(Server.quote(Long.toString(s.owner().id())));else if(layer==Layer.continentId)out.append(Server.quote(Long.toString(s.continentId())));
             else if(layer==Layer.regime)out.append(Server.quote(edge.regime().name()));
@@ -269,7 +275,8 @@ final class TectonicView {
     }
     static String metadata() {
         StringBuilder out=new StringBuilder("{\"model\":").append(Server.quote(MODEL)).append(",\"version\":").append(Server.quote(TectonicTerrain.VERSION))
-            .append(",\"hydrologyVersion\":").append(Server.quote(ContinentalHydrology.VERSION)).append(",\"params\":[");
+            .append(",\"hydrologyVersion\":").append(Server.quote(ContinentalHydrology.VERSION))
+            .append(",\"native\":{\"baseHeight\":256,\"baseSeaLevel\":63,\"maxSize\":4},\"params\":[");
         for(var s:SPECS){if(out.charAt(out.length()-1)!='[')out.append(',');out.append("{\"id\":").append(Server.quote(s.id)).append(",\"label\":").append(Server.quote(s.label)).append(",\"default\":").append(s.value)
             .append(",\"min\":").append(s.min).append(",\"max\":").append(s.max).append(",\"step\":").append(s.step).append('}');}
         out.append("],\"fields\":[");for(var layer:Layer.values()){if(out.charAt(out.length()-1)!='[')out.append(',');out.append("{\"id\":").append(Server.quote(layer.name())).append(",\"label\":").append(Server.quote(layer.label))

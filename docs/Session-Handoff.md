@@ -1,5 +1,11 @@
 # Genesis session handoff
 
+## Minecraft-native terrain v4 checkpoint (2026-09-16)
+
+`TectonicTerrain` is now `tectonic-terrain-v4`. Size1 is a256-block column with sea Y63 and integer surface Y1..255; default base plate spacing is65,536 blocks. Native vertical controls are block units and a monotone above/below-sea fit prevents broad hard-clamp shelves while preserving coast sign. Six wide seeds average29.4342% land. `size=1..4` uses floor-divided canonical coordinates and scales site coordinates, plate spacing, all vertical terms and boundary distance exactly; gates compare sizes2/3/4. Size2 hydrology has identical active/terminal/receiver topology, doubled beds/spills and quadrupled rainfall/flux ledgers. Terrain fingerprint `84ff0895c2b3d981a74be4ea8ac736dd9b37ef091530a3f59a8e317d52ead59b`; hydrology fingerprint `9415a5488b8063bf6167eaaa385c3aa053c8f3a2052f812b610fceff49f14c09`.
+
+The tectonic viewer has33 layers and20 parameters. It reports native size/world height/sea level in metadata, samples, PNG headers and UI; contours are actual blocks. Fullscreen targets the map figure, switches384²→512² and rerenders; exit restores384². Java HTTP/direct gates and the Node Fullscreen API contract pass. Generated terrain/height/mountain/river images were inspected. A live browser surface was unavailable for browser-paint QA. Read `research/minecraft-native-tectonic-terrain.md`. Minecraft/GTNH integration remains deferred; standard1.7.10 should use size1.
+
 ## Targeted build runner checkpoint (2026-09-16)
 
 `genesis.ps1` and the new executable `genesis.sh` now expose focused `check`/`gallery` targets: `core`, `continents`, `hydrology-labs`, `tectonic`, `rivers`, `tectonic-viewer`, `refinement`, `geology`, and explicit `all`. Bare `check` selects `tectonic`; legacy `test` selects `all`. Successful runs print only timed `OK` lines, keep full output under `build/logs/`, and show an 80-line tail on failure; PowerShell `-VerboseOutput` and Bash `--verbose` stream output. `build` compiles/packages only the Java8 core, while `serve` omits gate sources. Windows CI uses the PowerShell runner and Ubuntu CI uses the Bash runner. Focused PowerShell and Git-Bash `tectonic` checks pass; the `rivers` target and core-only package also pass. The unrelated uncommitted tectonic-viewer changes present during this work were deliberately left untouched.

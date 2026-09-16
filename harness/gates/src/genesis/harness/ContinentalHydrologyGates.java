@@ -45,7 +45,7 @@ final class ContinentalHydrologyGates {
         }
         check(lakes>0,"No continental depressions fill to spill");
         counterfactuals(world);spillFixtures();
-        String fingerprint=HexFormat.of().formatHex(digest.digest());check(fingerprint.equals("9d986dab09b1e116a9d6d011e19276d172f1fb1050fd07f66860b3c9718ef5d7"),"Versioned continental hydrology changed: "+fingerprint);
+        String fingerprint=HexFormat.of().formatHex(digest.digest());check(fingerprint.equals("9415a5488b8063bf6167eaaa385c3aa053c8f3a2052f812b610fceff49f14c09"),"Versioned continental hydrology changed: "+fingerprint);
         Files.createDirectories(Path.of("build/gallery"));Files.writeString(Path.of("build/continental-hydrology.json"),json.append("],\"fingerprint\":\"").append(fingerprint).append("\"}\n").toString());
         System.out.println("PASS CONTINENT HYDRO: complete support vs wider reference, rainfall scaling/heterogeneity/dryness, downhill overflow and independent upstream walks, cache/concurrency, spill cascade and exact ledgers");
     }
@@ -62,9 +62,17 @@ final class ContinentalHydrologyGates {
         compare(base,hydro.referenceRoot(group,3),1);
         compare(base,new ContinentalHydrology(world,new RainfallField.Uniform(2000)).root(group),2);
         compare(base,new ContinentalHydrology(world,new RainfallField.Uniform(0)).root(group),0);
-        var varying=new ContinentalHydrology(world,(x,z)->x< -524288?500:1500).root(group);long rain=0;boolean west=false,east=false;
+        var d=world.settings;var upSettings=new TectonicTerrain.Settings(d.coastBlendPermille(),d.seaThreshold(),d.landHeight(),d.oceanDepth(),d.forcingPermille(),d.detailHeight(),d.seaLevel(),d.plateWarpPermille(),d.plateRoughnessPermille(),d.plateRelief(),d.plateTilt(),d.elevationOffset(),2);
+        var upWorld=new TectonicTerrain(world.seed,world.basePlateParams,upSettings);var up=new ContinentalHydrology(upWorld,new RainfallField.Uniform(1000)).root(upWorld.continent(-1,-1));
+        check(up.activeCells==base.activeCells&&up.terminalCells==base.terminalCells&&up.supplied()==base.supplied()*4&&up.discharged()==base.discharged()*4,"Native upscale changed drainage support or area budget");
+        for(int p=0;p<base.size();p++)if(base.active(p)) {
+            int q=up.index(base.x(p)*2,base.z(p)*2);check(up.active(q)&&up.bed(q)==base.bed(p)*2&&up.filled(q)==base.filled(p)*2&&up.source(q)==base.source(p)*4&&up.flux(q)==base.flux(p)*4,"Native upscale changed river geometry or mass");
+            int a=base.downstream(p),b=up.downstream(q);check((a<0&&b<0)||(a>=0&&b>=0&&up.x(b)==base.x(a)*2&&up.z(b)==base.z(a)*2),"Native upscale changed receiver topology");
+        }
+        long split=base.bounds.x()+base.bounds.width()/2L*base.step;
+        var varying=new ContinentalHydrology(world,(x,z)->x<split?500:1500).root(group);long rain=0;boolean west=false,east=false;
         for(int p=0;p<varying.size();p++)if(varying.active(p)&&!varying.sea(p)) {
-            long amount=varying.x(p)< -524288?500:1500;west|=amount==500;east|=amount==1500;
+            long amount=varying.x(p)<split?500:1500;west|=amount==500;east|=amount==1500;
             long expected=amount*varying.step*varying.step;check(varying.source(p)==expected,"Spatial rainfall field ignored");rain+=expected;
         }
         check(west&&east&&rain==varying.supplied()&&rain==varying.discharged(),"Heterogeneous rain not conserved");

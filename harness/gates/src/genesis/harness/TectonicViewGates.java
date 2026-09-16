@@ -26,12 +26,13 @@ final class TectonicViewGates {
             for(String asset:new String[]{"/tectonics.html","/tectonics.js","/tectonics.css"})check(get(client,base,asset).statusCode()==200,"Missing tectonic asset "+asset);
             var meta=get(client,base,"/api/tectonic/meta");check(meta.statusCode()==200&&text(meta).equals(TectonicView.metadata()),"Metadata does not describe candidate");
             check(text(get(client,base,"/")).contains("/tectonics.html")&&text(get(client,base,"/continents.html")).contains("/tectonics.html"),"New viewer not discoverable");
-            String config="seed=-9223372036854775808&x=-123456&z=76543&step=1024&width=7&height=6&plateSpacing=32768&continentalPercent=61&forcingPermille=1250&seaLevel=150";
+            String config="seed=-9223372036854775808&x=-123456&z=76543&step=1024&width=7&height=6&size=2&plateSpacing=32768&continentalPercent=61&forcingPermille=1250&seaLevel=63";
             for(var layer:TectonicView.Layer.values()) {
                 var request=TectonicView.request(TectonicView.query(config+"&layer="+layer));
                 var direct=TectonicView.render(request);var response=get(client,base,"/api/tectonic/render?"+config+"&layer="+layer);
                 check(response.statusCode()==200,"Render failed for "+layer);check(response.headers().firstValue("X-World-Model").orElse("").equals(TectonicView.MODEL),"Wrong render model");
                 check(response.headers().firstValue("X-World-Version").orElse("").equals(TectonicTerrain.VERSION),"Wrong render version");
+                check(response.headers().firstValue("X-World-Height").orElse("").equals("512")&&response.headers().firstValue("X-Sea-Level").orElse("").equals("126")&&response.headers().firstValue("X-Native-Scale").orElse("").equals("2"),"Wrong native build dimensions");
                 var image=ImageIO.read(new ByteArrayInputStream(response.body()));check(image.getWidth()==7&&image.getHeight()==6,"Render ignored dimensions");
                 for(int z=0;z<6;z++)for(int x=0;x<7;x++)check(image.getRGB(x,z)==direct.image().getRGB(x,z),"HTTP differs from direct candidate raster");
                 check(Double.parseDouble(response.headers().firstValue("X-Land-Fraction").orElseThrow())==direct.landFraction(),"Displayed land metric differs from height mask");
@@ -53,13 +54,13 @@ final class TectonicViewGates {
             var wide=ImageIO.read(new ByteArrayInputStream(get(client,base,"/api/tectonic/render?x=400000&z=100000&width=12&height=12"+contour).body()));
             var crop=ImageIO.read(new ByteArrayInputStream(get(client,base,"/api/tectonic/render?x=402048&z=103072&width=6&height=6"+contour).body()));
             for(int z=0;z<6;z++)for(int x=0;x<6;x++)check(wide.getRGB(x+2,z+3)==crop.getRGB(x,z),"Contour depends on crop edges");
-            var fine=TectonicView.request(TectonicView.query("layer=heightMap&contourInterval=5&step=1&width=1&height=1"));check(TectonicView.contourInterval(fine)==5,"Five metre contours not available at fine zoom");
+            var fine=TectonicView.request(TectonicView.query("layer=heightMap&contourInterval=1&step=1&width=1&height=1"));check(TectonicView.contourInterval(fine)==1,"One-block contours not available at fine zoom");
             var baseColor=new java.awt.Color(120,180,100);
             check(!TectonicView.contourColor(baseColor,100,5,25).equals(baseColor),"Contour missing at exact level on a slope");
             check(TectonicView.contourColor(baseColor,112.5,5,25).equals(baseColor),"Contour drawn between levels");
             check(TectonicView.contourColor(baseColor,100,0,25).equals(baseColor),"Flat plateau blackened at a contour level");
             check(get(client,base,"/api/tectonic/render?layer=heightMap&width=1&height=1&x="+Lattice.MAX_COORDINATE+"&z="+Lattice.MAX_COORDINATE).statusCode()==200,"Contour halo escaped numeric support");
-            for(String bad:new String[]{"contourInterval=4","contourInterval=-1","contourInterval=1001","elevationOffset=1","elevationOffset=-4001"})check(get(client,base,"/api/tectonic/render?"+bad).statusCode()==400,"Invalid display/offset accepted: "+bad);
+            for(String bad:new String[]{"contourInterval=-1","contourInterval=257","elevationOffset=1","elevationOffset=-193","size=0","size=5"})check(get(client,base,"/api/tectonic/render?"+bad).statusCode()==400,"Invalid native display/terrain setting accepted: "+bad);
             for(String bad:new String[]{"seed=1&seed=2","seed=9223372036854775808","noise=1","model=continental","layer=noise","crustProvinceScale=2","plateWarpPermille=301","plateRoughnessPermille=201","seaLevel=NaN","width=513","height=0","step=0","x="+Lattice.MAX_COORDINATE+"&width=2","plateSpeed=129"})
                 check(get(client,base,"/api/tectonic/render?"+bad).statusCode()==400,"Invalid tectonic query accepted: "+bad);
             check(get(client,base,"/api/tectonic/unknown").statusCode()==404,"Unknown tectonic route accepted");
@@ -70,7 +71,7 @@ final class TectonicViewGates {
             var png=get(client,base,"/api/tectonic/render?width=384&height=384");check(png.statusCode()==200,"Default viewer raster failed");
             Files.createDirectories(Path.of("build/gallery"));Files.write(Path.of("build/gallery/tectonic-viewer-terrain.png"),png.body());
             Files.write(Path.of("build/gallery/tectonic-viewer-height.png"),get(client,base,"/api/tectonic/render?layer=heightMap&width=384&height=384").body());
-            Files.write(Path.of("build/gallery/tectonic-viewer-mountains.png"),get(client,base,"/api/tectonic/render?layer=heightMap&x=4233969&z=3211581&step=1024&width=384&height=384&contourInterval=25").body());
+            Files.write(Path.of("build/gallery/tectonic-viewer-mountains.png"),get(client,base,"/api/tectonic/render?layer=heightMap&x=-131072&z=-196608&step=512&width=384&height=384&contourInterval=5").body());
             var rivers=get(client,base,"/api/tectonic/render?layer=riverMap&width=384&height=384");check(rivers.statusCode()==200,"Default continent river map failed");Files.write(Path.of("build/gallery/tectonic-rivers.png"),rivers.body());
             Files.write(Path.of("build/gallery/tectonic-rivers-detail.png"),get(client,base,"/api/tectonic/render?layer=riverMap&x=-786432&z=-786432&step=2048&width=384&height=384").body());
             check(text(get(client,base,"/api/tectonic/sample?x=-524288&z=-524288")).contains("\"hydrologyVersion\":\"continental-hydrology-v1\""),"Inspector missing drainage version");
@@ -92,8 +93,8 @@ final class TectonicViewGates {
             var wetPoint=text(get(client,base,"/api/tectonic/sample?x="+mx+"&z="+mz));check(wetPoint.contains("\"flux\":\""+riverRoot.flux(mouth)+"\""),"Exact large river flux lost in JSON");
             var unsupported=text(get(client,base,"/api/tectonic/sample?x="+Lattice.MAX_COORDINATE+"&z="+Lattice.MAX_COORDINATE));
             check(unsupported.contains("\"waterSurface\":null")&&unsupported.contains("\"hydrology\":{\"status\":0"),"Numeric guard became a drainage outlet");
-            Files.writeString(Path.of("build/tectonic-viewer.json"),"{\"model\":\"tectonic-experimental\",\"layers\":33,\"httpDirectAgreement\":true,\"unadornedCropZoomAgreement\":true,\"contourCropAgreement\":true,\"continentalRivers\":true,\"browserVisualCheck\":\"not provided by this gate\"}\n");
+            Files.writeString(Path.of("build/tectonic-viewer.json"),"{\"model\":\"tectonic-experimental\",\"layers\":33,\"parameters\":20,\"nativeBaseHeight\":256,\"nativeBaseSeaLevel\":63,\"integralUpscale\":true,\"fullscreenLogic\":true,\"httpDirectAgreement\":true,\"continentalRivers\":true}\n");
         }
-        System.out.println("PASS TECTONIC VIEW: 33 candidate layers HTTP/direct/crop/zoom; continent river support/limits/rainfall; contour halo/LOD; exact inspector/configuration; code-rendered views; NOT browser layout QA");
+        System.out.println("PASS TECTONIC VIEW: native 256/Y63 headers, size-2 rendering, 33 layers/20 parameters, rivers, block contours, fullscreen logic contract and exact inspector/configuration");
     }
 }

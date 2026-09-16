@@ -16,8 +16,9 @@ Research records distinguish established results, mathematical reasoning, design
 - [Tectonic absolute terrain](tectonic-terrain-experiment.md): correlated crust provinces feed both broad elevation and boundary forcing; six wide-area samples yield51.4-53.9% land at fixed sea level. This candidate is ready for an exploratory viewer, not final geography or hydrology.
 - [Sparse irregular plates](sparse-irregular-plates.md): v2 viewer generator with 64× fewer nominal plates, variable shapes/sizes, predominantly mixed land/submerged plates, exact 1–4 plate families, datum/tilt, and an explicit geographic cost for the continent cap.
 - [Motion-driven relief](motion-driven-relief.md): current v3 plate height/tilt from relative motion, convergent continental sutures, fixed30% land preset, high-contrast contour map and explicit approximation limits.
+- [Minecraft-native tectonic terrain](minecraft-native-tectonic-terrain.md): v4 block-height rewrite, size1=256/Y63, exact integral sizes1–4, native hydrology scaling and finite-column limits.
 - [Continental hydrology](continental-hydrology.md): complete irregular family solves rather than display windows, depression overflow, steepest routed rivers, uniform/replaceable rainfall and exact full-upstream ledgers; coarse maritime-reserve model, not fine channel realization.
-- [Tectonic viewer contracts](../docs/Tectonic-Viewer.md): separate Java21 page/API with33 top-bar fields,19 world parameters plus display-only contours, exact rainfall/flow inspection, navigation/export, versioning and integration checks. Browser visual QA remains outstanding.
+- [Tectonic viewer contracts](../docs/Tectonic-Viewer.md): separate Java21 page/API with33 top-bar fields,20 parameters, native scale/readouts, block contours, fullscreen, exact rainfall/flow inspection and versioned exports.
 - [Active roadmap](../docs/Active-Roadmap.md): implementation order and acceptance criteria informed by this research.
 
 The original [development proposal](../Dev-Roadmap.md) and [concept notes](../warning_half_baked_concepts.md) remain preserved. Research changes the active execution plan, not the historical record.

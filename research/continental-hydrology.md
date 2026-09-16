@@ -1,6 +1,6 @@
 # Complete-continent rainfall and overflow experiment
 
-2026-09-10. `continental-hydrology-v1`, layered on unchanged `tectonic-terrain-v3` heights. Implements the user's request to replace viewer-sized hydrology windows with continent-dependent solving and an expandable rainfall input. Based on the existing [finite reference](../docs/Finite-Hydrology.md) and [active hydrology experiments](paired-drainage-experiment.md); no new external algorithm or physical-climate claim is made.
+2026-09-10, updated 2026-09-16. `continental-hydrology-v1`, now layered on Minecraft-native `tectonic-terrain-v4` surface Y. It replaces viewer-sized hydrology windows with continent-dependent solving and an expandable rainfall input. The routing algorithm is unchanged; size2 is gated as an exact upscale with doubled bed/spill heights, identical receivers and quadrupled area runoff.
 
 ## What defines a solve
 
@@ -39,7 +39,7 @@ The exact ledger is `supplied = discharged + unresolved`. Doubling rainfall doub
 
 ## Viewer, performance and evidence
 
-Open [Rivers + lakes](http://127.0.0.1:8787/tectonics.html?layer=riverMap). Six new top-bar layers: rivers/lakes, rainfall, discharge, depression fill, spill surface and drainage status. There are33 total layers and19 world parameters, including `rainfallMm`. The inspector shows the canonical sampled node, its receiver, exact flux and the complete family ledger. Terrain version remainsv3; hydrology has its own version in metadata, PNG headers, inspection, saved URLs and exported configuration.
+Open [Rivers + lakes](http://127.0.0.1:8787/tectonics.html?layer=riverMap). Six water layers sit among33 total layers and20 world parameters, including native `size` and `rainfallMm`. The inspector shows the canonical node, receiver, exact flux and complete-family ledger. Terrain and hydrology retain separate versions in metadata, PNG headers, inspection, URLs and exports.
 
 Rendering evaluates already committed world-coordinate river segments and node fields; zoom does not recompute the graph. The nearest hydrological node chooses the family for coarse diagnostics, avoiding mismatched ownership at sub-grid family borders. Lake fill is displayed only below its coarse spill surface with positive inflow. Existing height contours remain display-only. Actual nonzero-river crop/common-point zoom tests pass, not merely water-only samples.
 
