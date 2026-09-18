@@ -18,6 +18,16 @@ final class ActiveHydrologyGates {
         var relaxed=verify(2,2,new int[4],new boolean[]{true,true,true,true},new boolean[]{true,false,false,false},
             new long[]{0,1,1,1},alternative,emptyCrests(4));
         check(relaxed.filled(1)==0,"First discovered expensive saddle must be relaxed through the cheaper detour");
+        int[] signedBed=new int[513];Arrays.fill(signedBed,17);
+        signedBed[0]=Integer.MAX_VALUE;signedBed[1]=-1;signedBed[2]=Integer.MIN_VALUE;signedBed[3]=0;signedBed[4]=Integer.MIN_VALUE;
+        boolean[] signedFlags=new boolean[513];Arrays.fill(signedFlags,true);
+        var signed=verify(513,1,signedBed,signedFlags,signedFlags,new long[513],emptyCrests(513),emptyCrests(513));
+        check(signed.order(2)==0&&signed.order(4)==1&&signed.order(1)==2&&signed.order(3)==3&&signed.order(5)==4&&signed.order(0)==512,
+            "Growing heap order must be signed elevation then cell, including equal integer minima");
+        int[] extremeAlternative=emptyCrests(4);extremeAlternative[0]=Integer.MAX_VALUE;
+        var extremeRelaxed=verify(2,2,new int[]{Integer.MIN_VALUE,Integer.MIN_VALUE,Integer.MIN_VALUE,Integer.MIN_VALUE},
+            new boolean[]{true,true,true,true},new boolean[]{true,false,false,false},new long[]{0,1,1,1},extremeAlternative,emptyCrests(4));
+        check(extremeRelaxed.filled(1)==Integer.MIN_VALUE,"Stale integer-maximum entry hid an integer-minimum detour");
         for(int trial=0;trial<300;trial++) {
             int w=1+random.nextInt(8),h=1+random.nextInt(8),n=w*h;int[] bed=new int[n],east=emptyCrests(n),south=emptyCrests(n);
             boolean[] active=new boolean[n],term=new boolean[n];long[] source=new long[n];
@@ -50,7 +60,7 @@ final class ActiveHydrologyGates {
             Callable<Long> job=()->ActiveHydrology.solve(2,1,extremes,new boolean[]{true,true},new boolean[]{true,false},new long[]{0,37},emptyCrests(2),emptyCrests(2)).discharged;
             for(var result:pool.invokeAll(List.of(job,job)))check(result.get()==37,"Concurrent solve changed mass");
         }
-        System.out.println("PASS ACTIVE HYDRO: 300 independent saddle-minimax/source-walk cases, excluded cells, D4 corners, exact heterogeneous mass, extremes/invalid/concurrent; finite overflow model");
+        System.out.println("PASS ACTIVE HYDRO: 300 independent saddle-minimax/source-walk cases, excluded cells, D4 corners, exact heterogeneous mass, signed/extreme heap order, invalid/concurrent; finite overflow model");
     }
     static ActiveHydrology.Result verify(int w,int h,int[] bed,boolean[] active,boolean[] term,long[] source,int[] east,int[] south) {
         var actual=ActiveHydrology.solve(w,h,bed,active,term,source,east,south);int n=bed.length;

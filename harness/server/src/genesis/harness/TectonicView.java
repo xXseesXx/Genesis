@@ -7,9 +7,12 @@ import genesis.core.hash.Lattice;
 import genesis.oracle.TectonicTerrain;
 import genesis.oracle.TectonicTerrain.Settings;
 import genesis.oracle.TectonicTerrain.Sample;
+import genesis.oracle.ClimateField;
 import genesis.oracle.ContinentalHydrology;
 import genesis.oracle.ContinentalHydrology.Root;
-import genesis.oracle.RainfallField;
+import genesis.oracle.FluvialNetwork;
+import genesis.oracle.TerrainSubstrate;
+import genesis.oracle.WindField;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -24,9 +27,15 @@ import javax.imageio.ImageIO;
 /** Separate read-only API for the Java21 tectonic candidate; never aliases production fields. */
 final class TectonicView {
     static final String MODEL="tectonic-experimental";
+    static final String WATER_STATUS="bounded fine channel corridors and connected-lake masks over complete-continent routing; fine-grid downhill/cross-divide proof and transient storage absent";
+    /** Per-request cold-work guard; 4M vertices retain about 322 MB at 80.5 B/vertex. */
+    static final int MAX_HYDRO_FAMILIES=20;
+    static final long MAX_HYDRO_VERTICES=4_000_000;
+    static final long MAX_HYDRO_ESTIMATED_BYTES=322_000_000;
+    record HydroBudget(int families,long vertices) {}
     record Spec(String id,String label,int value,int min,int max,int step) {}
     static final List<Spec> SPECS=List.of(
-        new Spec("size","Native upscale (1 = 256 high)",1,1,4,1),new Spec("plateSpacing","Base plate spacing at size 1",65536,8192,262144,4096),new Spec("plateJitter","Plate-site jitter %",50,0,50,1),
+        new Spec("size","Native upscale (1 = 256 high)",1,1,4,1),new Spec("plateSpacing","Base plate spacing at size 1",2048,2048,262144,1024),new Spec("plateJitter","Plate-site jitter %",50,0,50,1),
         new Spec("plateSpeed","Motion component limit",64,1,128,1),new Spec("transformRatio","Transform threshold %",35,0,100,1),
         new Spec("continentalPercent","Crust extent (not land %)",53,0,100,1),new Spec("crustAgeMax","Synthetic age maximum",3000,100,4500,100),
         new Spec("coastBlendPermille","Coast blend width / S",120,40,300,10),
@@ -36,13 +45,27 @@ final class TectonicView {
         new Spec("plateWarpPermille","Plate-edge warp / S",220,0,300,10),new Spec("plateRoughnessPermille","Plate-edge serration",140,0,200,10),
         new Spec("plateRelief","Motion-driven datum, blocks",14,0,96,1),new Spec("plateTilt","Motion-driven tilt, blocks",19,0,96,1),
         new Spec("elevationOffset","Relative bed offset, blocks",-53,-192,0,1),
-        new Spec("rainfallMm","Uniform rainfall (model mm/year)",1000,0,10000,100));
+        new Spec("rainfallMm","Mean precipitation scale (model mm/year)",1000,0,10000,100),
+        new Spec("erosionStrength","Erosion exposure, permille",700,0,3000,50));
     enum Layer {
-        elevation("Terrain","Minecraft-native surface Y; size 1 is bounded to 1..255 with sea at Y=63",0,255),
-        heightMap("Height + contours","Minecraft-native surface blocks with fixed colors and display-only contours",0,255),
-        riverMap("Rivers + lakes","Complete continent overflow and rainfall-weighted coarse rivers; not carved fine terrain",0,1),
-        rainfall("Rainfall","Barebones uniform map, model mm/year; replaceable coordinate-local climate input",0,10000),
-        runoff("River discharge","Nearest canonical node runoff, in billions of rain-mm × model-block²/year",0,100000),
+        erodedTerrain("Eroded terrain","Rainfall-driven bedrock incision per complete continent; interpolated coarse erosion depth",0,255),
+        erosionDepth("Erosion depth","Removed bedrock at the nearest canonical node, blocks",0,64),
+        hardness("Terrain hardness","Exposed substrate resistance: 0 soft, 1 resistant",0,1),
+        elevation("Before erosion","Original tectonic surface Y before hydraulic erosion",0,255),
+        heightMap("Height + contours","Original tectonic surface before erosion, with display-only contours",0,255),
+        riverMap("Rivers + lakes","Curved discharge-sized channel threads, bankfull corridors and connected flat-surface lake masks; coarse zoom adds a display-only pixel-footprint cue",0,1),
+        windDirection("Wind direction","Continuous divergence-free flow angle from +X toward +Z, degrees",-180,180),
+        windSpeed("Wind speed","Continuous non-stagnating model wind magnitude",.6,1.4),
+        humidity("Humidity","Steady advected atmospheric moisture fraction",0,1),
+        rainfall("Rainfall","Terrain-aware precipitation after moisture advection and orographic lift, model mm/year",0,10000),
+        soilDepth("Soil depth","Weathering- and moisture-dependent soil/regolith thickness, blocks",0,8),
+        bedrockElevation("Bedrock elevation","Eroded surface minus the soil/regolith column, Y blocks",0,255),
+        bedrockDepth("Bedrock depth","Depth from ground surface to coherent parent rock, blocks",0,8),
+        rockType("Rock type","0 basalt / 1 granite / 2 shale / 3 limestone / 4 sandstone",0,4),
+        infiltration("Infiltration fraction","Annual precipitation fraction admitted into soil/rock storage",0,1),
+        runoffFraction("Runoff fraction","Annual precipitation fraction routed over the surface",0,1),
+        drainage("Ground drainage","0 well drained / 1 moderate / 2 poor",0,2),
+        runoff("River discharge","Nearest canonical node effective runoff, in billions of runoff-mm × model-block²/year",0,100000),
         lakeDepth("Depression fill","Potential fill to the lowest spill path, Minecraft blocks; assumes eventual filling",0,64),
         waterSurface("Spill surface","Nearest canonical node's minimum overflow surface Y",0,255),
         drainageStatus("Drainage status","0 unavailable/unresolved; 1 routed; 2 prescribed maritime-reserve water",0,2),
@@ -74,11 +97,16 @@ final class TectonicView {
         final String label,description;final double min,max;
         Layer(String label,String description,double min,double max){this.label=label;this.description=description;this.min=min;this.max=max;}
     }
-    private record HydroKey(long seed,Params params,Settings settings,int rain) {}
+    private record HydroKey(long seed,Params params,Settings settings,int rain,int erosion,
+                            String terrainVersion,String hydrologyVersion,String fluvialVersion,
+                            String climateVersion,String windVersion,String substrateVersion) {}
     private static final Map<HydroKey,ContinentalHydrology> HYDRO=new LinkedHashMap<>(4,.75f,true);
-    private static synchronized ContinentalHydrology hydrology(TectonicTerrain world,int rain) {
-        var key=new HydroKey(world.seed,world.plateParams,world.settings,rain);var found=HYDRO.get(key);if(found!=null)return found;
-        var result=new ContinentalHydrology(world,new RainfallField.Uniform(rain));HYDRO.put(key,result);if(HYDRO.size()>2)HYDRO.remove(HYDRO.keySet().iterator().next());return result;
+    private static synchronized ContinentalHydrology hydrology(TectonicTerrain world,int rain,int erosion) {
+        var key=new HydroKey(world.seed,world.plateParams,world.settings,rain,erosion,TectonicTerrain.VERSION,ContinentalHydrology.VERSION,
+            FluvialNetwork.VERSION,ClimateField.VERSION,WindField.VERSION,TerrainSubstrate.VERSION);
+        var found=HYDRO.get(key);if(found!=null)return found;
+        var climate=new ClimateField(world.seed,world.plateParams.integer("plateSpacing"),rain);
+        var result=new ContinentalHydrology(world,climate,12,erosion,TerrainSubstrate.seeded(world));HYDRO.put(key,result);if(HYDRO.size()>2)HYDRO.remove(HYDRO.keySet().iterator().next());return result;
     }
     record Request(TectonicTerrain world,long x,long z,long step,int width,int height,Layer layer,int contourInterval,ContinentalHydrology hydro) {}
     record Raster(BufferedImage image,double landFraction,long nanos) {}
@@ -99,14 +127,14 @@ final class TectonicView {
         var config=new Settings(settings.get("coastBlendPermille"),settings.get("seaThreshold"),settings.get("landHeight"),settings.get("oceanDepth"),
             settings.get("forcingPermille"),settings.get("detailHeight"),settings.get("seaLevel"),settings.get("plateWarpPermille"),
             settings.get("plateRoughnessPermille"),settings.get("plateRelief"),settings.get("plateTilt"),settings.get("elevationOffset"),settings.get("size"));
-        long seed=number(query,"seed",42),x=number(query,"x",-98304),z=number(query,"z",-98304),step=number(query,"step",512);
+        long seed=number(query,"seed",42),x=number(query,"x",-3072),z=number(query,"z",-3072),step=number(query,"step",16);
         int width=Math.toIntExact(number(query,"width",384)),height=Math.toIntExact(number(query,"height",384));
-        if(width<1||height<1||width>512||height>512||step<1||step>1048576)throw new IllegalArgumentException("Dimensions 1..512; step 1..1048576 required");
+        if(width<1||height<1||step<1||step>1048576)throw new IllegalArgumentException("Dimensions must be positive; step 1..1048576 required");
         Lattice.check(x);Lattice.check(z);Lattice.check(Math.addExact(x,Math.multiplyExact(width-1L,step)));Lattice.check(Math.addExact(z,Math.multiplyExact(height-1L,step)));
         int contours=Math.toIntExact(number(query,"contourInterval",5));
         if(contours!=0&&(contours<1||contours>256))throw new IllegalArgumentException("Contour interval: 0 (off) or 1..256 blocks");
         var world=new TectonicTerrain(seed,new Params(plate),config);
-        return new Request(world,x,z,step,width,height,Layer.valueOf(query.getOrDefault("layer","elevation")),contours,hydrology(world,settings.get("rainfallMm")));
+        return new Request(world,x,z,step,width,height,Layer.valueOf(query.getOrDefault("layer","erodedTerrain")),contours,hydrology(world,settings.get("rainfallMm"),settings.get("erosionStrength")));
     }
     private static long number(Map<String,String> q,String key,long fallback){return Long.parseLong(q.getOrDefault(key,Long.toString(fallback)));}
     static void handle(HttpExchange exchange)throws IOException {
@@ -125,6 +153,10 @@ final class TectonicView {
         exchange.getResponseHeaders().set("X-Render-Ms",Double.toString(result.nanos/1e6));exchange.getResponseHeaders().set("X-Land-Fraction",Double.toString(result.landFraction));
         exchange.getResponseHeaders().set("X-Contour-Interval",Integer.toString(contourInterval(request)));
         exchange.getResponseHeaders().set("X-Hydrology-Version",ContinentalHydrology.VERSION);
+        exchange.getResponseHeaders().set("X-Fluvial-Version",FluvialNetwork.VERSION);
+        exchange.getResponseHeaders().set("X-Climate-Version",ClimateField.VERSION);
+        exchange.getResponseHeaders().set("X-Wind-Version",WindField.VERSION);
+        exchange.getResponseHeaders().set("X-Substrate-Version",TerrainSubstrate.VERSION);
         exchange.getResponseHeaders().set("X-World-Height",Integer.toString(request.world.worldHeight()));exchange.getResponseHeaders().set("X-Sea-Level",Integer.toString(request.world.seaLevel()));
         exchange.getResponseHeaders().set("X-Native-Scale",Integer.toString(request.world.settings.size()));
         Server.send(exchange,200,"image/png",out.toByteArray());
@@ -136,21 +168,15 @@ final class TectonicView {
         long[] familyIds=samples==null?null:new long[samples.length];
         Map<Long,Root> roots=new LinkedHashMap<>();
         if(samples!=null) {
-            var groups=new LinkedHashMap<Long,genesis.oracle.ContinentalGroups.Group>();long vertices=0;
-            // Preflight bounds/work before any expensive full-continent solve. No partial roots.
-            for(int z=0;z<r.height;z++)for(int x=0;x<r.width;x++) {
-                var s=r.world.sample(r.x+x*r.step,r.z+z*r.step);samples[z*r.width+x]=s;
-                Sample node=canonicalSample(r,r.x+x*r.step,r.z+z*r.step,s);var g=r.hydro.group(node);familyIds[z*r.width+x]=g.id();
-                if(groups.containsKey(g.id()))continue;groups.put(g.id(),g);
-                try{var b=r.hydro.bounds(g);vertices+=b.width()*(long)b.height();}catch(IllegalArgumentException unsupported){roots.put(g.id(),null);}
-                if(groups.size()>24||vertices>8_000_000)throw new IllegalArgumentException("Hydrology view spans too many complete continents; zoom in (24 families / 8 million support vertices maximum)");
-            }
-            for(var g:groups.values())if(!roots.containsKey(g.id()))roots.put(g.id(),r.hydro.root(g));
+            var support=hydrologySupport(r,samples,familyIds,true);roots.putAll(support.unavailable());
+            for(var g:support.groups().values())if(!roots.containsKey(g.id()))roots.put(g.id(),r.hydro.root(g));
         }
         for(int z=0;z<r.height;z++)for(int x=0;x<r.width;x++) {
             long wx=r.x+x*r.step,wz=r.z+z*r.step;var s=samples==null?r.world.sample(wx,wz):samples[z*r.width+x];if(s.land())land++;
             if(samples!=null){image.setRGB(x,z,hydroColor(r,s,roots.get(familyIds[z*r.width+x]),wx,wz).getRGB());continue;}
-            if(r.layer==Layer.rainfall){image.setRGB(x,z,color(r.layer,r.hydro.rain(wx,wz),0,1,0).getRGB());continue;}
+            if(r.layer==Layer.windDirection||r.layer==Layer.windSpeed) {
+                image.setRGB(x,z,color(r.layer,windValue(r.hydro.climate.wind(wx,wz),r.layer),0,1,0).getRGB());continue;
+            }
             double value=value(r.world,s,r.layer,wx,wz);long id=r.layer==Layer.continentId?s.continentId():s.owner().id();
             image.setRGB(x,z,color(r.layer,value,r.world.seaLevel(),r.world.settings.size(),id).getRGB());
             if(heights!=null)heights[z][x]=s.elevation();
@@ -166,7 +192,39 @@ final class TectonicView {
         }
         return new Raster(image,land/(double)(r.width*r.height),System.nanoTime()-start);
     }
-    static boolean hydroLayer(Layer layer){return switch(layer){case riverMap,runoff,lakeDepth,waterSurface,drainageStatus->true;default->false;};}
+    private record HydroSupport(Map<Long,genesis.oracle.ContinentalGroups.Group> groups,Map<Long,Root> unavailable,long vertices) {
+        HydroBudget budget(){return new HydroBudget(groups.size(),vertices);}
+    }
+    /** Cold complete-continent work implied by this raster, before any root is built. */
+    static HydroBudget hydrologyBudget(Request r) {
+        if(!hydroLayer(r.layer))return new HydroBudget(0,0);
+        return hydrologySupport(r,null,null,false).budget();
+    }
+    static long estimatedHydrologyBytes(long vertices) {
+        if(vertices<0)throw new IllegalArgumentException("Negative hydrology work");
+        return Math.floorDiv(Math.addExact(Math.multiplyExact(vertices,805),9),10);
+    }
+    private static HydroSupport hydrologySupport(Request r,Sample[] samples,long[] familyIds,boolean enforce) {
+        var groups=new LinkedHashMap<Long,genesis.oracle.ContinentalGroups.Group>();Map<Long,Root> unavailable=new LinkedHashMap<>();long vertices=0;
+        // Bound all cold work before building any full continent: never return partial roots.
+        // Unsupported boxes near the numeric guard stay null (pink) and consume no vertices.
+        for(int z=0;z<r.height;z++)for(int x=0;x<r.width;x++) {
+            int pixel=z*r.width+x;long wx=r.x+x*r.step,wz=r.z+z*r.step;var s=r.world.sample(wx,wz);
+            if(samples!=null)samples[pixel]=s;
+            Sample node=canonicalSample(r,wx,wz,s);var g=r.hydro.group(node);
+            if(familyIds!=null)familyIds[pixel]=g.id();
+            if(groups.containsKey(g.id()))continue;groups.put(g.id(),g);
+            try{var b=r.hydro.bounds(g);vertices=Math.addExact(vertices,Math.multiplyExact((long)b.width(),b.height()));}catch(IllegalArgumentException unsupported){unavailable.put(g.id(),null);}
+            if(enforce&&(groups.size()>MAX_HYDRO_FAMILIES||vertices>MAX_HYDRO_VERTICES||estimatedHydrologyBytes(vertices)>MAX_HYDRO_ESTIMATED_BYTES))
+                throw new IllegalArgumentException("Hydrology view spans too many complete continents; zoom in ("+MAX_HYDRO_FAMILIES+" families / "+MAX_HYDRO_VERTICES+" support vertices / about "+MAX_HYDRO_ESTIMATED_BYTES+" measured root-array bytes maximum)");
+        }
+        return new HydroSupport(groups,unavailable,vertices);
+    }
+    static boolean hydroLayer(Layer layer){return switch(layer) {
+        case erodedTerrain,erosionDepth,hardness,riverMap,humidity,rainfall,soilDepth,bedrockElevation,bedrockDepth,
+             rockType,infiltration,runoffFraction,drainage,runoff,lakeDepth,waterSurface,drainageStatus->true;
+        default->false;
+    };}
     private static Sample canonicalSample(Request r,long x,long z,Sample fallback) {
         long nx=r.hydro.snap(x),nz=r.hydro.snap(z);
         if(Math.abs(nx)>Lattice.MAX_COORDINATE||Math.abs(nz)>Lattice.MAX_COORDINATE)return fallback;
@@ -174,21 +232,54 @@ final class TectonicView {
     }
     private static double hydroValue(Root root,int p,Layer layer) {
         if(root==null||root.status(p)==0)return 0;
-        return switch(layer){case riverMap->root.flux(p)>0?1:0;case runoff->root.flux(p)/1e9;case lakeDepth->root.lakeDepth(p);case waterSurface->root.filled(p)/1000.0;case drainageStatus->root.status(p);default->throw new IllegalArgumentException("Not a drainage field");};
+        return switch(layer) {
+            case erodedTerrain->root.bed(p)/1000.0;case erosionDepth->root.erosionDepth(p);case hardness->root.hardness(p);
+            case riverMap->root.flux(p)>0?1:0;case humidity->root.humidity(p);case rainfall->root.rainfall(p);
+            case soilDepth,bedrockDepth->root.soilDepth(p);case bedrockElevation->root.bedrockElevation(p);case rockType->root.rock(p).ordinal();
+            case infiltration->root.infiltrationPermille(p)/1000.0;case runoffFraction->root.runoffPermille(p)/1000.0;case drainage->root.drainage(p).ordinal();
+            case runoff->root.flux(p)/1e9;case lakeDepth->root.lakeDepth(p);case waterSurface->root.filled(p)/1000.0;case drainageStatus->root.status(p);
+            default->throw new IllegalArgumentException("Not a drainage field");
+        };
+    }
+    private static double windValue(WindField.Wind wind,Layer layer) {
+        return switch(layer){case windDirection->StrictMath.toDegrees(wind.directionRadians());case windSpeed->wind.speed();default->throw new IllegalArgumentException("Not a wind field");};
     }
     private static Color hydroColor(Request r,Sample s,Root root,long x,long z) {
         int p=root==null?-1:root.index(x,z);if(root==null||root.status(p)==0)return new Color(184,96,159);
+        double eroded=root.elevation(x,z,s.elevation(),r.world.seaLevel());
+        if(r.layer==Layer.erodedTerrain)return color(Layer.elevation,eroded,r.world.seaLevel(),r.world.settings.size(),0);
         if(r.layer!=Layer.riverMap)return color(r.layer,hydroValue(root,p,r.layer),r.world.seaLevel(),r.world.settings.size(),0);
-        Color base=color(Layer.elevation,s.elevation(),r.world.seaLevel(),r.world.settings.size(),0);
+        Color base=color(Layer.elevation,eroded,r.world.seaLevel(),r.world.settings.size(),0);
         if(root.status(p)==2&&s.elevation()<=r.world.seaLevel())return base;
-        if(root.lakeDepth(p)>.05&&root.flux(p)>0&&s.elevation()<root.filled(p)/1000.0)base=blend(new Color(64,157,181),new Color(24,90,143),root.lakeDepth(p)/250);
-        var river=root.river(x,z);
-        if(river.flux()>0) {
-            double relative=river.flux()/(16_000.0*root.step*root.step),width=root.step*Math.min(.48,.18+.045*StrictMath.log(relative)/StrictMath.log(2));
-            double alpha=Math.max(0,Math.min(1,(width-river.distance())/(root.step*.12)+.5));
-            base=blend(base,new Color(13,92,157),alpha);
+        var lake=root.lakeAt(x,z,eroded);
+        if(lake!=null&&lake.wet()&&lake.lake().flux()>0) {
+            double depthScale=lake.depth()/Math.max(.001,lake.lake().maxDepth());
+            base=blend(new Color(72,165,188),new Color(20,82,143),.35+.55*depthScale);
+        }
+        var channel=root.channelAt(x,z);
+        if(channel!=null) {
+            if(channel.insideBankfull())base=blend(base,new Color(73,126,144),.20);
+            // Cap display coverage at two canonical drainage cells. This is enough to
+            // join the detail raster while keeping common world samples invariant at
+            // wider zoom levels.
+            double alpha=currentChannelAlpha(channel,Math.min(r.step,2L*root.step));
+            if(alpha>0)base=blend(base,new Color(10,83,153),alpha);
         }
         return base;
+    }
+    /** Exact thread mask at fine scale; display-only pixel-footprint coverage when it is sub-pixel. */
+    static double currentChannelAlpha(FluvialNetwork.Channel channel,long pixelStep) {
+        if(channel==null||pixelStep<1)return 0;double width=channel.threadWidth(),radius=width/2;
+        if(channel.insideCurrent()) {
+            double edge=radius-channel.threadDistance();return .78+.18*Math.min(1,edge/Math.max(.25,width*.18));
+        }
+        if(width>=pixelStep)return 0;
+        // Project an axis-aligned square pixel onto the channel normal. A centerline
+        // crossing its footprint remains visible without changing the physical mask.
+        double halfFootprint=pixelStep*.5*(Math.abs(channel.tangentX())+Math.abs(channel.tangentZ()));
+        double reach=radius+halfFootprint;if(channel.threadDistance()>reach||halfFootprint<=0)return 0;
+        double penetration=(reach-channel.threadDistance())/halfFootprint;
+        return .42+.18*Math.max(0,Math.min(1,penetration));
     }
     static int contourInterval(Request r) {
         if(r.layer!=Layer.heightMap||r.contourInterval==0)return 0;
@@ -213,10 +304,22 @@ final class TectonicView {
             case plateTiltX->s.plateTiltX();case plateTiltZ->s.plateTiltZ();case recentFracture->s.recentFracture()?1:0;case boundaryDistance->s.boundaryDistance();
             case velocityX->s.owner().vx();case velocityZ->s.owner().vz();case age->s.owner().age();case junctionSites->s.junctionSites();
             case regime->w.boundary(x,z).edge().regime().ordinal();case normal->w.boundary(x,z).edge().normalQ()/1024.0;case shear->w.boundary(x,z).edge().shearQ()/1024.0;
-            case riverMap,rainfall,runoff,lakeDepth,waterSurface,drainageStatus->throw new IllegalArgumentException("Drainage fields require the complete hydrology context");};
+            case erodedTerrain,erosionDepth,hardness,riverMap,windDirection,windSpeed,humidity,rainfall,soilDepth,bedrockElevation,bedrockDepth,
+                 rockType,infiltration,runoffFraction,drainage,runoff,lakeDepth,waterSurface,drainageStatus->throw new IllegalArgumentException("Climate, ground and drainage fields require their shared context");};
     }
     static Color color(Layer layer,double value,int seaLevel,int size,long id) {
+        if(layer==Layer.erosionDepth)return blend(new Color(240,234,210),new Color(170,53,29),value/(24*size));
+        if(layer==Layer.hardness)return blend(new Color(227,207,139),new Color(72,65,92),value);
+        if(layer==Layer.windDirection)return new Color(Color.HSBtoRGB((float)((value+180)/360.0),.68f,.88f));
+        if(layer==Layer.windSpeed)return blend(new Color(229,241,235),new Color(50,83,164),(value-.6)/.8);
+        if(layer==Layer.humidity)return blend(new Color(211,177,112),new Color(37,119,176),value);
         if(layer==Layer.rainfall)return blend(new Color(235,223,172),new Color(31,117,176),value/2500);
+        if(layer==Layer.soilDepth||layer==Layer.bedrockDepth)return blend(new Color(222,205,169),new Color(80,67,46),value/8);
+        if(layer==Layer.bedrockElevation)return color(Layer.elevation,value,seaLevel,size,0);
+        if(layer==Layer.rockType)return new Color(new int[]{0x454b52,0xc2b1aa,0x777264,0xd6d2ad,0xc59254}[Math.max(0,Math.min(4,(int)value))]);
+        if(layer==Layer.infiltration)return blend(new Color(181,132,75),new Color(63,151,169),value);
+        if(layer==Layer.runoffFraction)return blend(new Color(231,221,177),new Color(24,91,170),value);
+        if(layer==Layer.drainage)return new Color(new int[]{0xb89b52,0x75a56c,0x3d78a9}[Math.max(0,Math.min(2,(int)value))]);
         if(layer==Layer.runoff)return blend(new Color(241,236,215),new Color(12,75,159),StrictMath.log1p(value)/StrictMath.log(10001));
         if(layer==Layer.lakeDepth)return blend(new Color(240,234,210),new Color(29,112,174),StrictMath.log1p(value/size)/StrictMath.log(65));
         if(layer==Layer.waterSurface)return color(Layer.heightMap,value,seaLevel,size,0);
@@ -251,31 +354,80 @@ final class TectonicView {
         Root root=null;try{root=r.hydro.root(r.hydro.group(canonicalSample(r,r.x,r.z,s)));}catch(IllegalArgumentException unsupported){/* complete support unavailable near numeric guard */}
         int node=root==null?-1:root.index(r.x,r.z);int status=root==null?0:root.status(node);
         StringBuilder out=new StringBuilder("{\"model\":").append(Server.quote(MODEL)).append(",\"version\":").append(Server.quote(TectonicTerrain.VERSION))
-            .append(",\"hydrologyVersion\":").append(Server.quote(ContinentalHydrology.VERSION))
+            .append(",\"hydrologyVersion\":").append(Server.quote(ContinentalHydrology.VERSION)).append(",\"fluvialVersion\":").append(Server.quote(FluvialNetwork.VERSION))
+            .append(",\"climateVersion\":").append(Server.quote(ClimateField.VERSION)).append(",\"windVersion\":").append(Server.quote(WindField.VERSION))
+            .append(",\"substrateVersion\":").append(Server.quote(TerrainSubstrate.VERSION))
             .append(",\"seed\":").append(Server.quote(Long.toString(r.world.seed))).append(",\"x\":").append(Server.quote(Long.toString(r.x))).append(",\"z\":").append(Server.quote(Long.toString(r.z)))
             .append(",\"worldHeight\":").append(r.world.worldHeight()).append(",\"seaLevel\":").append(r.world.seaLevel()).append(",\"size\":").append(r.world.settings.size()).append(",\"fields\":{");
         for(var layer:Layer.values()){if(out.charAt(out.length()-1)!='{')out.append(',');out.append(Server.quote(layer.name())).append(':');
             if(layer==Layer.plateId)out.append(Server.quote(Long.toString(s.owner().id())));else if(layer==Layer.continentId)out.append(Server.quote(Long.toString(s.continentId())));
             else if(layer==Layer.regime)out.append(Server.quote(edge.regime().name()));
-            else if(layer==Layer.rainfall)out.append(r.hydro.rain(r.x,r.z));
-            else if(hydroLayer(layer)){if(status==0&&layer==Layer.waterSurface)out.append("null");else out.append(hydroValue(root,node,layer));}
+            else if(layer==Layer.windDirection||layer==Layer.windSpeed)out.append(windValue(r.hydro.climate.wind(r.x,r.z),layer));
+            else if(layer==Layer.rockType){if(root==null||!root.active(node))out.append("null");else out.append(Server.quote(root.rock(node).name()));}
+            else if(layer==Layer.drainage){if(root==null||!root.active(node))out.append("null");else out.append(Server.quote(root.drainage(node).name()));}
+            else if(layer==Layer.erodedTerrain){if(status==0)out.append("null");else out.append(root.elevation(r.x,r.z,s.elevation(),r.world.seaLevel()));}
+            else if(hydroLayer(layer)){if(status==0)out.append("null");else out.append(hydroValue(root,node,layer));}
             else out.append(value(r.world,s,layer,r.x,r.z));}
         out.append("},\"hydrology\":{\"status\":").append(status).append(",\"step\":").append(r.hydro.step);
         if(root!=null&&root.active(node)) {
-            int q=root.downstream(node);out.append(",\"familyId\":").append(Server.quote(Long.toString(root.group.id())))
+            int q=root.downstream(node);var wind=root.wind(r.x,r.z);out.append(",\"familyId\":").append(Server.quote(Long.toString(root.group.id())))
                 .append(",\"nodeX\":").append(Server.quote(Long.toString(root.x(node)))).append(",\"nodeZ\":").append(Server.quote(Long.toString(root.z(node))))
                 .append(",\"source\":").append(Server.quote(Long.toString(root.source(node)))).append(",\"flux\":").append(Server.quote(Long.toString(root.flux(node))))
+                .append(",\"contributingCells\":").append(Server.quote(Long.toString(root.fluvial().contributingCells(node))))
+                .append(",\"contributingArea\":").append(Server.quote(Long.toString(root.fluvial().contributingArea(node))))
+                .append(",\"strahlerOrder\":").append(root.fluvial().strahlerOrder(node))
                 .append(",\"supplied\":").append(Server.quote(Long.toString(root.supplied()))).append(",\"discharged\":").append(Server.quote(Long.toString(root.discharged())))
                 .append(",\"unresolved\":").append(Server.quote(Long.toString(root.unresolved()))).append(",\"activeCells\":").append(root.activeCells)
+                .append(",\"exportedSedimentMmBlock2\":").append(Server.quote(root.exportedSediment.toString()))
+                .append(",\"climate\":{\"rainfall\":").append(root.rainfall(node)).append(",\"humidity\":").append(root.humidity(node))
+                .append(",\"wind\":{\"x\":").append(wind.x()).append(",\"z\":").append(wind.z()).append(",\"speed\":").append(wind.speed())
+                .append(",\"directionRadians\":").append(wind.directionRadians()).append(",\"directionDegrees\":").append(StrictMath.toDegrees(wind.directionRadians())).append("}}")
+                .append(",\"ground\":{\"rock\":").append(Server.quote(root.rock(node).name())).append(",\"hardness\":").append(root.hardness(node))
+                .append(",\"soilDepth\":").append(root.soilDepth(node)).append(",\"bedrockElevation\":").append(root.bedrockElevation(node))
+                .append(",\"bedrockDepth\":").append(root.soilDepth(node)).append(",\"infiltrationPermille\":").append(root.infiltrationPermille(node))
+                .append(",\"runoffPermille\":").append(root.runoffPermille(node)).append(",\"drainage\":").append(Server.quote(root.drainage(node).name())).append('}')
                 .append(",\"downstream\":");
             if(q<0)out.append("null");else out.append("{\"x\":").append(Server.quote(Long.toString(root.x(q)))).append(",\"z\":").append(Server.quote(Long.toString(root.z(q)))).append('}');
+            appendChannel(out,root,root.channelAt(r.x,r.z));
+            appendLake(out,root,root.lakeAt(r.x,r.z,root.elevation(r.x,r.z,s.elevation(),r.world.seaLevel())));
         }
         return out.append("},\"closestBoundary\":{\"first\":").append(Server.quote(Long.toString(edge.first().id()))).append(",\"second\":").append(Server.quote(Long.toString(edge.second().id())))
-            .append(",\"descendingSide\":").append(edge.descendingSide()).append("},\"waterStatus\":\"complete-continent coarse overflow to prescribed maritime reserve; no fine channel realization\"}").toString();
+            .append(",\"descendingSide\":").append(edge.descendingSide()).append("},\"waterStatus\":").append(Server.quote(WATER_STATUS)).append('}').toString();
+    }
+    private static void appendChannel(StringBuilder out,Root root,FluvialNetwork.Channel channel) {
+        out.append(",\"channel\":");if(channel==null){out.append("null");return;}var profile=channel.profile();
+        out.append("{\"source\":");appendCell(out,root,channel.sourceSegment());out.append(",\"downstream\":");appendCell(out,root,channel.downstream());
+        out.append(",\"t\":").append(channel.t()).append(",\"thread\":").append(channel.thread()).append(",\"threadCount\":").append(channel.threadCount())
+            .append(",\"flux\":").append(Server.quote(Long.toString(profile.flux())))
+            .append(",\"meanDischarge\":").append(profile.meanDischarge()).append(",\"bankfullDischarge\":").append(profile.bankfullDischarge())
+            .append(",\"currentWidth\":").append(profile.currentWidth()).append(",\"currentDepth\":").append(profile.currentDepth()).append(",\"currentVelocity\":").append(profile.currentVelocity())
+            .append(",\"bankfullWidth\":").append(profile.bankfullWidth()).append(",\"bankfullDepth\":").append(profile.bankfullDepth()).append(",\"bankfullVelocity\":").append(profile.bankfullVelocity())
+            .append(",\"slope\":").append(profile.slope()).append(",\"roughness\":").append(profile.roughness()).append(",\"strahlerOrder\":").append(profile.order())
+            .append(",\"planform\":").append(Server.quote(profile.planform().name())).append(",\"tangent\":{\"x\":").append(channel.tangentX()).append(",\"z\":").append(channel.tangentZ()).append('}')
+            .append(",\"centerDistance\":").append(channel.centerDistance()).append(",\"threadDistance\":").append(channel.threadDistance())
+            .append(",\"insideCurrent\":").append(channel.insideCurrent()).append(",\"insideBankfull\":").append(channel.insideBankfull())
+            .append(",\"waterSurface\":").append(channel.waterSurface()).append(",\"bedElevation\":").append(channel.bedElevation()).append(",\"bankfullWaterSurface\":").append(channel.bankfullWaterSurface()).append('}');
+    }
+    private static void appendLake(StringBuilder out,Root root,FluvialNetwork.LakeSample sample) {
+        out.append(",\"lake\":");if(sample==null){out.append("null");return;}var lake=sample.lake();
+        out.append("{\"id\":").append(Server.quote(Long.toString(lake.id()))).append(",\"component\":").append(lake.component())
+            .append(",\"surface\":").append(sample.surface()).append(",\"surfaceMillimetres\":").append(lake.surfaceMillimetres())
+            .append(",\"depth\":").append(sample.depth()).append(",\"maxDepth\":").append(lake.maxDepth()).append(",\"cellCount\":").append(lake.cellCount())
+            .append(",\"flux\":").append(Server.quote(Long.toString(lake.flux()))).append(",\"shorelineSignal\":").append(sample.shorelineSignal())
+            .append(",\"bedElevation\":").append(sample.bedElevation()).append(",\"spill\":");appendCell(out,root,lake.spillCell());
+        out.append(",\"outlet\":");appendCell(out,root,lake.outletCell());out.append('}');
+    }
+    private static void appendCell(StringBuilder out,Root root,int cell) {
+        if(cell<0||cell>=root.size()){out.append("null");return;}
+        out.append("{\"cell\":").append(cell).append(",\"x\":").append(Server.quote(Long.toString(root.x(cell))))
+            .append(",\"z\":").append(Server.quote(Long.toString(root.z(cell)))).append('}');
     }
     static String metadata() {
         StringBuilder out=new StringBuilder("{\"model\":").append(Server.quote(MODEL)).append(",\"version\":").append(Server.quote(TectonicTerrain.VERSION))
-            .append(",\"hydrologyVersion\":").append(Server.quote(ContinentalHydrology.VERSION))
+            .append(",\"hydrologyVersion\":").append(Server.quote(ContinentalHydrology.VERSION)).append(",\"fluvialVersion\":").append(Server.quote(FluvialNetwork.VERSION))
+            .append(",\"climateVersion\":").append(Server.quote(ClimateField.VERSION)).append(",\"windVersion\":").append(Server.quote(WindField.VERSION))
+            .append(",\"substrateVersion\":").append(Server.quote(TerrainSubstrate.VERSION))
+            .append(",\"waterStatus\":").append(Server.quote(WATER_STATUS))
             .append(",\"native\":{\"baseHeight\":256,\"baseSeaLevel\":63,\"maxSize\":4},\"params\":[");
         for(var s:SPECS){if(out.charAt(out.length()-1)!='[')out.append(',');out.append("{\"id\":").append(Server.quote(s.id)).append(",\"label\":").append(Server.quote(s.label)).append(",\"default\":").append(s.value)
             .append(",\"min\":").append(s.min).append(",\"max\":").append(s.max).append(",\"step\":").append(s.step).append('}');}

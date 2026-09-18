@@ -1,9 +1,11 @@
 package genesis.harness;
 
 import genesis.oracle.ContinentalHydrology;
+import genesis.oracle.ContinentalGroups;
 import genesis.oracle.RainfallField;
 import genesis.oracle.TectonicTerrain;
 import genesis.oracle.ActiveHydrology;
+import genesis.oracle.TerrainHardness;
 import genesis.core.hash.Lattice;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
@@ -11,7 +13,12 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Arrays;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -45,7 +52,7 @@ final class ContinentalHydrologyGates {
         }
         check(lakes>0,"No continental depressions fill to spill");
         counterfactuals(world);spillFixtures();
-        String fingerprint=HexFormat.of().formatHex(digest.digest());check(fingerprint.equals("9415a5488b8063bf6167eaaa385c3aa053c8f3a2052f812b610fceff49f14c09"),"Versioned continental hydrology changed: "+fingerprint);
+        String fingerprint=HexFormat.of().formatHex(digest.digest());check(fingerprint.equals("0124b6d1df53b2cb17f3f6ad68d5bf209e47413b435f21a64dc7cc91aebb47ab"),"Versioned continental hydrology changed: "+fingerprint);
         Files.createDirectories(Path.of("build/gallery"));Files.writeString(Path.of("build/continental-hydrology.json"),json.append("],\"fingerprint\":\"").append(fingerprint).append("\"}\n").toString());
         System.out.println("PASS CONTINENT HYDRO: complete support vs wider reference, rainfall scaling/heterogeneity/dryness, downhill overflow and independent upstream walks, cache/concurrency, spill cascade and exact ledgers");
     }
@@ -81,6 +88,10 @@ final class ContinentalHydrologyGates {
             List<Callable<ContinentalHydrology.Root>> jobs=List.of(()->hydro.root(group),()->hydro.root(world.continent(8,6)),()->hydro.root(group));
             var results=pool.invokeAll(jobs);compare(base,results.get(0).get(),1);compare(base,results.get(2).get(),1);
         }
+        cacheConcurrencyFixtures(world);
+        var forgedSource=world.continent(8,6);check(forgedSource.id()!=group.id(),"Forged-group fixture shares an id");
+        var forged=new ContinentalGroups.Group(forgedSource.tileI(),forgedSource.tileJ(),forgedSource.part(),group.id(),forgedSource.members());
+        rejects(()->hydro.root(forged));
         rejects(()->new RainfallField.Uniform(-1));rejects(()->new RainfallField.Uniform(10001));rejects(()->new ContinentalHydrology(world,(x,z)->-1).root(group));
         rejects(()->hydro.root(hydro.group(world.sample(Lattice.MAX_COORDINATE,Lattice.MAX_COORDINATE))));
         // Entire support, not the read crop, determines the result for distant seeds/continents.
@@ -94,6 +105,53 @@ final class ContinentalHydrologyGates {
             var root=new ContinentalHydrology(other,new RainfallField.Uniform(10000)).root(other.continent(-1,-1));
             check(root.size()<=514*514&&root.supplied()==root.discharged()&&root.unresolved()==0,"Off-step/extreme spacing or maximum rainfall failed");
         }
+    }
+    private static void cacheConcurrencyFixtures(TectonicTerrain world)throws Exception {
+        var group=world.continent(-1,-1);var baseHardness=TerrainHardness.seeded(world);
+        var entered=new CountDownLatch(1);var release=new CountDownLatch(1);var first=new AtomicBoolean(true);
+        TerrainHardness delayed=(x,z)->{if(first.compareAndSet(true,false)){entered.countDown();await(release);}return baseHardness.resistance(x,z);};
+        var activeClear=new ContinentalHydrology(world,new RainfallField.Uniform(1000),2,0,delayed);
+        try(var pool=Executors.newFixedThreadPool(2)) {
+            var old=pool.submit(()->activeClear.root(group));
+            try {
+                check(entered.await(10,TimeUnit.SECONDS),"Active-clear build did not reach its provider");
+                activeClear.clear();var waiterThread=new AtomicReference<Thread>();var waiterStarted=new CountDownLatch(1);
+                var fresh=pool.submit(()->{waiterThread.set(Thread.currentThread());waiterStarted.countDown();return activeClear.root(group);});
+                check(waiterStarted.await(10,TimeUnit.SECONDS),"Post-clear request did not start");
+                long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);boolean waiting=false;
+                while(System.nanoTime()<deadline&&!fresh.isDone()) {
+                    var state=waiterThread.get().getState();if(state==Thread.State.WAITING||state==Thread.State.TIMED_WAITING){waiting=true;break;}
+                    Thread.sleep(1);
+                }
+                check(waiting,"Post-clear request did not wait for the stale build");release.countDown();
+                var oldRoot=old.get(20,TimeUnit.SECONDS);var freshRoot=fresh.get(20,TimeUnit.SECONDS);
+                check(oldRoot!=freshRoot,"Post-clear request reused a pre-clear root");compare(oldRoot,freshRoot,1);
+            } finally {release.countDown();}
+        }
+
+        var fourEntered=new CountDownLatch(4);var releaseFour=new CountDownLatch(1);
+        var builderThreads=ConcurrentHashMap.<Thread>newKeySet();
+        TerrainHardness fourAtOnce=(x,z)->{if(builderThreads.add(Thread.currentThread())){fourEntered.countDown();await(releaseFour);}return baseHardness.resistance(x,z);};
+        var bounded=new ContinentalHydrology(world,new RainfallField.Uniform(1000),5,0,fourAtOnce);
+        var groups=List.of(world.continent(-1,-1),world.continent(8,6),world.continent(16,12),world.continent(24,18),world.continent(32,24));
+        check(groups.stream().map(ContinentalGroups.Group::id).distinct().count()==5,"Build-bound fixtures are not distinct");
+        try(var pool=Executors.newFixedThreadPool(5)) {
+            var jobs=groups.stream().<Callable<ContinentalHydrology.Root>>map(g->()->bounded.root(g)).toList();var futures=new java.util.ArrayList<java.util.concurrent.Future<ContinentalHydrology.Root>>();
+            for(var job:jobs)futures.add(pool.submit(job));
+            try {
+                check(fourEntered.await(20,TimeUnit.SECONDS),"Four build slots did not start");Thread.sleep(100);
+                check(builderThreads.size()==4,"More than four distinct roots built concurrently");
+            } finally {releaseFour.countDown();}
+            for(var future:futures)check(future.get(30,TimeUnit.SECONDS).unresolved()==0,"Bounded concurrent root failed");
+            check(builderThreads.size()==5,"Queued fifth root never acquired a released slot");
+        }
+
+        var failOnce=new AtomicBoolean(true);
+        var recovering=new ContinentalHydrology(world,new RainfallField.Uniform(1000),2,0,(x,z)->{if(failOnce.compareAndSet(true,false))throw new IllegalArgumentException("failure fixture");return baseHardness.resistance(x,z);});
+        rejects(()->recovering.root(group));check(recovering.root(group).unresolved()==0,"Failed build left its cache slot wedged");
+    }
+    private static void await(CountDownLatch latch) {
+        try{latch.await();}catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new IllegalStateException(interrupted);}
     }
     private static void spillFixtures() {
         // Two depressions in series, separated by a saddle at 30, then sea at 0.

@@ -1,9 +1,50 @@
-# Minecraft adapter — reserved for M9
+# Genesis Minecraft adapter
 
-Target: Minecraft 1.7.10 / GregTech: New Horizons.
+Experimental Minecraft 1.7.10 / Forge 10.13.4.1614 world type, built from the supplied GTNH starter. Select **Genesis** in the Create World screen. Uses **tectonic terrain v7 + terrain climate/wind/substrate v1 + continental hydrology v4 + fluvial network v2 + erosion v2 + mass wasting v1 + adapter columns v5**, not the older `Generator.Model.CONTINENTAL` terrain.
 
-Use the official [GTNH ExampleMod1.7.10 project starter](https://github.com/GTNewHorizons/ExampleMod1.7.10#getting-started) when mod implementation begins. The official README directs new projects to its downloadable starter, rather than a clone of the example repository. Follow the actual starter link from that README and pin the imported release/checksum then.
+## Build and run
 
-Import and customize starter content under this directory; preserve the Genesis repository's `.git`, remote, roadmap, core, and harness. Do not nest the example project's Git metadata or overwrite the Genesis root. No mod template has been imported yet because the standalone generator comes first.
+From this directory:
 
-The adapter must consume the existing core, not copy/reimplement its algorithms. Only this module may depend on Forge/Minecraft/GTNH. Establish the exact pack version, world/dimension registration approach, height mapping, and coexistence with other world generators during M9 integration. Until then, `build/genesis-core.jar` is a standalone library, not a loadable Minecraft mod.
+```powershell
+.\gradlew.bat build
+.\gradlew.bat runClient
+```
+
+On Linux use `bash gradlew build` / `bash gradlew runClient`. The starter wrapper uses Gradle 9.3.1 and a Java 25 daemon; the mod compiles for **Java 21**. Toolchains are selected/downloaded by Gradle. Use a Java 21+ Minecraft installation with GTNH's modern Java bootstrap/lwjgl3ify. This artifact is **not Java 8 compatible**. `runClient` and `runServer` delegate to `runClient21` and `runServer21`; those explicit tasks also work. The starter's original Java 8 launcher silently ignored the mod because its ASM 5 scanner could not read Java 21 classes.
+
+The installable, reobfuscated mod is `build/libs/genesis-<git-version>.jar`. The `-dev` and `-sources` JARs are development artifacts. The generator is bundled; no separate core JAR or running viewer is required. Dedicated servers use `level-type=genesis`, empty `generator-settings`, and a new world directory.
+
+## Terrain contract
+
+- Reads the world's saved 64-bit seed. Fixed defaults: size 1, 256-block column, sea Y63, plate spacing 2,048, precipitation scale 1,000 and erosion exposure 700. The scale is four times smaller in each horizontal dimension than the immediately prior 8,192-block preset; vertical settings are unchanged. Arbitrary generator options are rejected.
+- Compiles existing `core` and required `oracle` sources directly in a separate source set. No terrain or erosion algorithm is copied; no Minecraft dependency is added to those modules. Laboratory/viewer code is excluded.
+- Uses canonical snapped hydrology ownership and `Root.elevation`, matching the viewer's interpolated eroded surface. Block surface Y is rounded down.
+- Uses a continuous divergence-free/non-stagnating stream-function wind and a fixed 24-pass humidity solve. Maritime recharge, wind direction and pre-incision mountain relief produce orographic rain and lee shadows. Five parent-rock classes then partition precipitation into exact annual surface-runoff, infiltration and evapotranspiration shares; only surface runoff drives erosion and river discharge.
+- Uses connected maritime membership for oceans, including exact sea-datum columns. Rain-fed, face-connected depression components have a stable flat surface and a signed component-indicator shoreline. Channel carving is composed before lake open volume is tested, and an inlet water profile meets the receiving lake stage; fractional shoreline fringes are not excavated merely to force a whole water voxel. Final voxelization evaluates one block of canonical world-coordinate halo around every chunk. Any dry column sharing a cardinal face with ocean, lake or river water is brought to that neighbor's integer stage as a bounded depositional bank. The same rule therefore seals every vanilla-water perimeter, including chunk seams, without generating or writing a neighboring chunk.
+- Interpolates the connected maritime-node mask at block coordinates instead of assigning a whole coastal area from one nearest coarse node. Mixed land/ocean chunks therefore fill every below-sea column on the connected-ocean side through sea Y, while enclosed low basins remain available to the lake solve.
+- Uses contributing flow, Strahler order, reach slope and hardness to expose mean/bankfull discharge, current/bankfull width, depth and velocity, downstream tangent, and cascade/straight/meandering/braided form. Current and bankfull widths are eight times the prior realization while retaining the same routed discharge; Manning depth and velocity are recomputed, so the wider channels are generally shallower rather than eight times deeper. Curved current threads carry water inside a compound bankfull corridor; two braided threads conserve and rejoin their equal shares.
+- Grades dry bars and banks upward from the current stage with a material-resistance stable-angle proxy. Within the analytic channel section naturally lower terrain is inundated rather than raised; the final one-block containment rim may deposit material to close an otherwise exposed vanilla-fluid face. Soil/rockhead depth, drainage and climate choose horizon blocks: basalt/shale/limestone use black/gray/white stained hardened clay, granite uses stone, sandstone uses sandstone, subsoil uses sand/dirt/clay, and surfaces use sand/grass/podzol-like dirt. Ocean/lake/channel sediment selects sand, clay, gravel or cobblestone from environment and velocity. `Blocks.bedrock` appears only at Y0, not at the shallow geologic rockhead.
+- Climate and drainage also choose among fitting vanilla ocean, swamp, desert, savanna, forest, plains and mountain biomes. Chunk generation writes only its own block/metadata arrays, and hydrology caches are per-world, bounded and value-preserving.
+- Uses Forge's height-aware block-and-metadata chunk constructor. The legacy block-only overload assumes a 128-block column and corrupts 256-high Z strides.
+- Searches deterministically for dry spawn land with headroom within 65,536 blocks; fails explicitly if none is found. Spawn fuzz is one block (the minimum positive value accepted by Minecraft 1.7.10). Custom spawn skips vanilla bonus-chest placement.
+
+## Validation and remaining work
+
+`build` runs JUnit, Checkstyle, Spotless, compilation and reobfuscation. Tests cover mixed land/ocean chunks and the former nearest-node coastal hole, exact-sea ocean water, sub-voxel lake edges, post-channel lake filling and flat stage, solid regolith below wet sediment, the general cardinal water-containment contract and independently generated real chunk seams, eightfold channel width, current containment by natural compound banks and a controlled two-thread braided bar, discharge-monotone hydraulics, hard/soft bank runout, climate/soil/rock/drainage exposure, block metadata/palette, canonical erosion/water queries, cold/shuffled/concurrent chunks, negative coordinates, zero rain and dry spawn selection. Reports: `build/reports/tests/test/`.
+
+Performance remains structurally bounded: each root retains the same maximum grid dimensions after the scale change; climate runs exactly 24 moisture passes; incision, gravity and channel-curve work have fixed caps; a point channel query examines at most a 5-by-5 coarse neighborhood and bounded chords; and a chunk-local primitive cache resolves the few snapped roots touching that chunk. The water-safe raster samples one shared 18-by-18 halo, 324 analytic columns versus 256 before containment (about 26.6% more), rather than independently resampling five points for all 256 outputs. Compact climate/substrate arrays add about 11 bytes per support vertex to the previous retained-root estimate, for roughly 80.5 bytes per vertex. Temporary climate arrays and JVM/chunk overhead are additional. The fourfold smaller plate spacing means 16 times as many possible roots per equal explored area, so cache churn during fast flight must be measured. Earlier pre-climate Ryzen 9 7900X3D timings are historical baselines only; a pinned current cold-root/warm-chunk/memory benchmark remains open.
+
+This is an early integration, not completion of M9. In-game loading, exact GTNH pack compatibility and region behavior still require validation. Use new test worlds: existing generated chunks are not retroactively rebuilt, and generator versions are not yet pinned in save metadata.
+
+The remaining model limits are explicit: topology is still coarse D8; fine thalweg descent/cross-divide exclusion and river-mouth/fluid-update behavior are not certified; lake storage/hypsometry, evaporation balance and closed-basin state are absent; the annual runoff partition is uncalibrated; and bankfull remains a fixed event proxy. There is no seasonal temperature/snow, groundwater/baseflow return, karst conduit graph or time-evolved soil. Stream-power incision exports removed bedrock, while only the bounded gravity stage deposits moved material locally—there is no fluvial sediment transport, bars or deltas. Vanilla metadata-0 source water cannot encode computed metres-per-second velocity, so speed/direction are deterministic diagnostics rather than physical in-game currents. Caves, structures, ores, vegetation placement and GTNH ore/worldgen population are not implemented; `populate` is empty. Actual fluid behavior and shoreline containment require an in-game soak test.
+
+## Baseline provenance
+
+Imported 2026-09-17 from user-supplied `C:\Users\fabib\Downloads\starter.zip` (63,147 bytes).
+
+SHA-256: `33ba88c40583451659607380a19abdf550c644c4e8a3b4fefbf16f40051154f3`.
+
+Archive pins: GTNH settings convention 2.0.20, Blowdryer settings 0.2.2, Gradle 9.3.1. No release tag is inferred from the filename. Upstream: [GTNH ExampleMod1.7.10](https://github.com/GTNewHorizons/ExampleMod1.7.10).
+
+Customized identity, metadata, source layout and Java mode. Removed example greeting/proxies and nested GitHub automation/CODEOWNERS. Repository root and existing work preserved. The unfilled `LICENSE-template` remains; this integration does not select a project license.

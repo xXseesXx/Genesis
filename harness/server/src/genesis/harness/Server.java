@@ -32,7 +32,7 @@ public final class Server {
         int port = args.length == 0 ? 8787 : Integer.parseInt(args[0]);
         Running running = start(port);
         Runtime.getRuntime().addShutdownHook(new Thread(running::close));
-        System.out.println("Genesis " + Generator.VERSION + " viewer: http://127.0.0.1:" + running.port() + " (Ctrl+C to stop)");
+        System.out.println("Genesis " + Generator.VERSION + " viewer: http://localhost:" + running.port() + " (Ctrl+C to stop)");
     }
 
     public static final class Running implements AutoCloseable {
@@ -44,7 +44,7 @@ public final class Server {
     }
 
     public static Running start(int port) throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 16);
+        HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getByName("localhost"), port), 16);
         ThreadPoolExecutor executor = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(16), new ThreadPoolExecutor.CallerRunsPolicy());
         server.setExecutor(executor);

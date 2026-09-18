@@ -1,8 +1,6 @@
 package genesis.oracle;
 
 import java.util.Arrays;
-import java.util.Comparator;
-import java.util.PriorityQueue;
 
 /** Finite D4 minimax routing with excluded cells, explicit edge crests and supplied net runoff.
  * Edge crests are physical graph saddle constraints, NOT hidden owner-based flow prohibitions.
@@ -10,7 +8,32 @@ import java.util.PriorityQueue;
  */
 public final class ActiveHydrology {
     public static final String VERSION = "active-hydrology-v1";
-    private record Entry(int cell,int level) {}
+    private static final int[] DX={-1,1,0,0,-1,1,-1,1};
+    private static final int[] DZ={0,0,-1,1,-1,-1,1,1};
+    /** Primitive heap key order is exactly signed level, then non-negative cell. */
+    private static final class MinHeap {
+        private long[] keys;
+        private int size;
+        MinHeap(int capacity){keys=new long[Math.max(1,capacity)];}
+        boolean isEmpty(){return size==0;}
+        void add(int cell,int level) {
+            if(size==keys.length)keys=Arrays.copyOf(keys,Math.addExact(size,size<1024?size:Math.max(1024,size>>>1)));
+            long key=((long)level<<32)|(cell&0xffffffffL);int child=size++;
+            while(child>0){int parent=(child-1)>>>1;long prior=keys[parent];if(prior<=key)break;keys[child]=prior;child=parent;}
+            keys[child]=key;
+        }
+        long remove() {
+            long root=keys[0],key=keys[--size];
+            if(size>0){int parent=0,half=size>>>1;
+                while(parent<half){int child=(parent<<1)+1;long next=keys[child];
+                    if(child+1<size&&keys[child+1]<next)next=keys[++child];
+                    if(key<=next)break;keys[parent]=next;parent=child;
+                }
+                keys[parent]=key;
+            }
+            return root;
+        }
+    }
     public static final class Result {
         private final int[] filled,downstream,order;
         private final long[] flux;
@@ -77,28 +100,27 @@ public final class ActiveHydrology {
         int[] filled=new int[n],down=new int[n],order=new int[n],sequence=new int[n];
         Arrays.fill(down,-1);Arrays.fill(order,-1);
         boolean[] reached=new boolean[n];long total=0;
-        var queue=new PriorityQueue<Entry>(Comparator.comparingInt(Entry::level).thenComparingInt(Entry::cell));
+        var queue=new MinHeap(Math.min(n,256));
         for(int p=0;p<n;p++) {
             if(runoff[p]<0||!active[p]&&(terminals[p]||runoff[p]!=0))throw new IllegalArgumentException("Invalid inactive/source/terminal contract");
             total=Math.addExact(total,runoff[p]);
-            if(terminals[p]){reached[p]=true;filled[p]=terrain[p];queue.add(new Entry(p,filled[p]));}
+            if(terminals[p]){reached[p]=true;filled[p]=terrain[p];queue.add(p,filled[p]);}
         }
         int count=0;
         while(!queue.isEmpty()) {
-            var entry=queue.remove();int p=entry.cell;
-            if(order[p]>=0||filled[p]!=entry.level)continue;
+            long entry=queue.remove();int p=(int)entry,level=(int)(entry>>32);
+            if(order[p]>=0||filled[p]!=level)continue;
             order[p]=count;sequence[count++]=p;
             int x=p%width,z=p/width;
-            int[] neighbors={x>0?p-1:-1,x+1<width?p+1:-1,z>0?p-width:-1,z+1<height?p+width:-1,
-                diagonal&&x>0&&z>0?p-width-1:-1,diagonal&&x+1<width&&z>0?p-width+1:-1,
-                diagonal&&x>0&&z+1<height?p+width-1:-1,diagonal&&x+1<width&&z+1<height?p+width+1:-1};
-            for(int q:neighbors) {
-                if(q<0||!active[q]||terminals[q]||order[q]>=0)continue;
+            int directions=diagonal?8:4;
+            for(int d=0;d<directions;d++) {
+                int nx=x+DX[d],nz=z+DZ[d];if(nx<0||nz<0||nx>=width||nz>=height)continue;int q=nz*width+nx;
+                if(!active[q]||terminals[q]||order[q]>=0)continue;
                 int crest=diagonal?Integer.MIN_VALUE:p/width==q/width?east[Math.min(p,q)]:south[Math.min(p,q)];
                 int candidate=Math.max(terrain[q],Math.max(filled[p],crest));
                 // Unlike vertex-only priority flood, arbitrary edge saddles require relaxation.
                 if(!reached[q]||candidate<filled[q]) {
-                    reached[q]=true;filled[q]=candidate;down[q]=p;queue.add(new Entry(q,candidate));
+                    reached[q]=true;filled[q]=candidate;down[q]=p;queue.add(q,candidate);
                 }
             }
         }

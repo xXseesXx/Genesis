@@ -2,6 +2,9 @@
 
 Research records distinguish established results, mathematical reasoning, design proposals, and measured experiments. A passing finite experiment is not evidence of complete infinite-world hydrology.
 
+- [Climate, ground and drainage revamp](climate-ground-hydrology.md): source-free continuous wind,
+  bounded humidity/orographic rain, material-dependent soil drainage, post-carve lake backwater,
+  Minecraft 1.7.10 ground representation, scale/performance contracts and explicit limits.
 - [Coherent infinite-world generation](2026-09-08-coherent-world-generation.md): algorithmic survey, primary sources, proposed architecture, and unresolved contracts.
 - [Boundary-flow summaries](boundary-flow-experiment.md): first executable experiment; exact finite graph reduction and nested composition, not a production root generator.
 - [Conservative runoff hierarchy](conservative-runoff-experiment.md): catchment-aligned source ownership, exact weighted splits, independent upstream integration, and explicit query-cost/quantization limitations.
@@ -15,10 +18,13 @@ Research records distinguish established results, mathematical reasoning, design
 - [Shared soft plate junctions](junction-forcing-experiment.md): bounded multi-plate anomaly with no winning-profile switch, larger-support and exact-output checks; convex blending can still invalidate a drainage divide. Next: broad continental elevation and an experimental tectonic viewer.
 - [Tectonic absolute terrain](tectonic-terrain-experiment.md): correlated crust provinces feed both broad elevation and boundary forcing; six wide-area samples yield51.4-53.9% land at fixed sea level. This candidate is ready for an exploratory viewer, not final geography or hydrology.
 - [Sparse irregular plates](sparse-irregular-plates.md): v2 viewer generator with 64× fewer nominal plates, variable shapes/sizes, predominantly mixed land/submerged plates, exact 1–4 plate families, datum/tilt, and an explicit geographic cost for the continent cap.
-- [Motion-driven relief](motion-driven-relief.md): current v3 plate height/tilt from relative motion, convergent continental sutures, fixed30% land preset, high-contrast contour map and explicit approximation limits.
-- [Minecraft-native tectonic terrain](minecraft-native-tectonic-terrain.md): v4 block-height rewrite, size1=256/Y63, exact integral sizes1–4, native hydrology scaling and finite-column limits.
-- [Continental hydrology](continental-hydrology.md): complete irregular family solves rather than display windows, depression overflow, steepest routed rivers, uniform/replaceable rainfall and exact full-upstream ledgers; coarse maritime-reserve model, not fine channel realization.
-- [Tectonic viewer contracts](../docs/Tectonic-Viewer.md): separate Java21 page/API with33 top-bar fields,20 parameters, native scale/readouts, block contours, fullscreen, exact rainfall/flow inspection and versioned exports.
+- [Motion-driven relief](motion-driven-relief.md): historical v3 plate height/tilt research from relative motion, convergent continental sutures, fixed 30% land preset, high-contrast contour map and explicit approximation limits; later terrain versions retain the kinematic basis.
+- [Minecraft-native tectonic terrain](minecraft-native-tectonic-terrain.md): current v7 block-height contract with size 1=256/Y63, 2,048-block default plate spacing, exact integral sizes 1–4, native hydrology scaling and finite-column limits.
+- [Continental hydrology](continental-hydrology.md): v4 complete-family routing, terrain-climate/effective-runoff input, erosion/mass-wasting composition, exact water ledgers, post-erosion lake/backwater behavior and fluvial v2; coarse D8 and storage/groundwater limitations remain.
+- [Tectonic viewer contracts](../docs/Tectonic-Viewer.md): separate Java 21 page/API with 46 top-bar fields, 21 parameters, coupled climate/ground maps, native scale/readouts, block contours, bounded tiles, exact hydraulic/lake inspection and six versioned subsystems.
 - [Active roadmap](../docs/Active-Roadmap.md): implementation order and acceptance criteria informed by this research.
+
+- [Continental hydraulic erosion](continental-erosion.md): research comparison and implemented deterministic per-family incision, age exposure, seeded hardness, rainfall, re-routed water and explicit sediment/fine-channel limitations.
+- [Fluvial hydrology revamp](fluvial-hydrology-revamp.md): evidence-backed bounded target plus the tested v2 implementation checkpoint for effective-runoff rivers, post-erosion lakes/backwater, curved forms and proxy mass wasting; the status checklist separates shipped behavior from open geomorphology.
 
 The original [development proposal](../Dev-Roadmap.md) and [concept notes](../warning_half_baked_concepts.md) remain preserved. Research changes the active execution plan, not the historical record.

@@ -106,7 +106,7 @@ case "$task" in
     run_quiet "gallery $target" "gallery-$target" java -Djava.awt.headless=true -cp build/classes genesis.harness.Gates gallery "$target"
     ;;
   serve)
-    printf 'SERVE http://127.0.0.1:%s/ (Ctrl+C to stop)\n' "$port"
+    printf 'SERVE http://localhost:%s/ (Ctrl+C to stop)\n' "$port"
     exec java -Djava.awt.headless=true -cp build/classes genesis.harness.Server "$port"
     ;;
 esac

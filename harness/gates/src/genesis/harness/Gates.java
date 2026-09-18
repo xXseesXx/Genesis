@@ -88,14 +88,21 @@ public final class Gates {
             }
             case "tectonic" -> TectonicTerrainGates.run();
             case "rivers" -> {
+                ClimateGroundGates.run();
                 ActiveHydrologyGates.run();
                 ContinentalHydrologyGates.run();
+                HydraulicErosionGates.run();
+                FluvialNetworkGates.run();
             }
             case "tectonic-viewer" -> {
                 TectonicTerrainGates.run();
+                ClimateGroundGates.run();
                 ActiveHydrologyGates.run();
                 ContinentalHydrologyGates.run();
+                HydraulicErosionGates.run();
+                FluvialNetworkGates.run();
                 TectonicViewGates.run();
+                TectonicTileGates.main(new String[0]);
             }
             case "refinement" -> {
                 CrestMeshGates.run();
@@ -138,8 +145,12 @@ public final class Gates {
         BoundaryForcingGates.run();
         JunctionForcingGates.run();
         TectonicTerrainGates.run();
+        ClimateGroundGates.run();
         ContinentalHydrologyGates.run();
+        HydraulicErosionGates.run();
+        FluvialNetworkGates.run();
         TectonicViewGates.run();
+        TectonicTileGates.main(new String[0]);
         CrestMeshGates.run();
         ChannelGates.run();
         RunoffGates.run();
@@ -363,7 +374,7 @@ public final class Gates {
     private static double percentile(long[] values, double p) { Arrays.sort(values); return values[(int) Math.ceil(p * values.length) - 1] / 1e6; }
     private static void http() throws Exception {
         try (Server.Running server = Server.start(0); HttpClient client = HttpClient.newHttpClient()) {
-            String base = "http://127.0.0.1:" + server.port();
+            String base = "http://localhost:" + server.port();
             for (String path : List.of("/", "/continents.html", "/style.css", "/app.js", "/hydrology.html", "/hydrology.js", "/hydrology.css", "/refinement.html", "/refinement.js", "/refinement.css", "/api/meta", "/api/meta?model=continental", "/api/sample?seed=-9223372036854775808&x=-1&z=16")) {
                 var response = client.send(HttpRequest.newBuilder(URI.create(base + path)).build(), HttpResponse.BodyHandlers.ofString());
                 check(response.statusCode() == 200 && !response.body().isEmpty(), "HTTP GET " + path);

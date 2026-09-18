@@ -15,7 +15,7 @@ import java.util.Map;
 
 /** Experimental sparse-plate terrain; deterministic and bounded, with no hydrological terminals. */
 public final class TectonicTerrain {
-    public static final String VERSION="tectonic-terrain-v4";
+    public static final String VERSION="tectonic-terrain-v7";
     public record Settings(int coastBlendPermille,int seaThreshold,int landHeight,int oceanDepth,
                            int forcingPermille,int detailHeight,int seaLevel,int plateWarpPermille,
                            int plateRoughnessPermille,int plateRelief,int plateTilt,int elevationOffset,int size) {
@@ -57,7 +57,7 @@ public final class TectonicTerrain {
     public final long seed;
 
     /** Size-one Minecraft-native preset; Settings.size performs exact integral upscaling. */
-    public static Params defaultPlateParams(){return new Params(Map.of("plateSpacing",65536.0,"continentalPercent",53.0));}
+    public static Params defaultPlateParams(){return new Params(Map.of("plateSpacing",2048.0,"continentalPercent",53.0));}
     public TectonicTerrain(long seed,Params params,Settings settings) {
         if(params==null||settings==null)throw new IllegalArgumentException("Complete terrain configuration required");
         this.seed=seed;this.basePlateParams=params;this.plateParams=scaled(params,settings.size);this.settings=settings;transformRatio=params.integer("transformRatio");coverage=params.integer("continentalPercent");
@@ -108,11 +108,19 @@ public final class TectonicTerrain {
             bounded=sea-range*(1-StrictMath.exp(-depth/Math.max(1,settings.oceanDepth)));
         } else if(unbounded>sea) {
             double range=255.0-sea,rise=unbounded-sea,relief=Math.max(1,settings.landHeight+settings.plateRelief+settings.plateTilt);
-            bounded=sea+range*(1-StrictMath.exp(-rise/relief));
+            bounded=sea+range*landHeightCurve(rise/relief);
         } else return sea;
         int y=(int)Math.round(bounded);
         if(unbounded>sea)y=Math.max(sea+1,y);else y=Math.min(sea,y);
         return Math.max(1,Math.min(255,y));
+    }
+
+    /** Concave hyperbolic saturation: fourfold initial gain, gentle high-mountain tail.
+     * Returns the fraction of above-sea build space occupied by normalized tectonic rise.
+     */
+    public static double landHeightCurve(double rise) {
+        if(!Double.isFinite(rise)||rise<0)throw new IllegalArgumentException("Finite nonnegative rise required");
+        return rise/(rise+.25);
     }
 
     public Site plateSite(long i,long j){return scaled(plates.site(i,j));}

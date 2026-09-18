@@ -40,9 +40,10 @@ final class TectonicTerrainGates {
     public static void main(String[] args)throws Exception{run();}
 
     static void run()throws Exception {
+        heightCurveChecks();
         Random random=new Random(77019);int supportCases=0;
         var digest=MessageDigest.getInstance("SHA-256");var bytes=ByteBuffer.allocate(128);
-        for(long seed:new long[]{42,-1,Long.MIN_VALUE})for(int spacing:new int[]{8192,65536,524288,1048576}) {
+        for(long seed:new long[]{42,-1,Long.MIN_VALUE})for(int spacing:new int[]{2048,8192,65536,524288,1048576}) {
             Params params=new Params(Map.of("plateSpacing",(double)spacing,"continentalPercent",53.0));
             var plates=new IrregularPlates(seed,params,220,140);var world=new TectonicTerrain(seed,params,Settings.defaults());
             for(int trial=0;trial<24;trial++) {
@@ -72,21 +73,35 @@ final class TectonicTerrainGates {
             check(audit.land.largestPlates<=4,"A sampled landmass crossed the constructed four-plate cap");
         }
         String fingerprint=HexFormat.of().formatHex(digest.digest());
-        check(fingerprint.equals("84ff0895c2b3d981a74be4ea8ac736dd9b37ef091530a3f59a8e317d52ead59b"),"Versioned v4 terrain fingerprint changed: "+fingerprint);
+        check(fingerprint.equals("c9ab08fdfe2272a841447ca140dc2734f7f6cd9f90a8434bae2213688cc827d7"),"Versioned terrain kernel fingerprint changed: "+fingerprint);
         write(audits,supportCases,mean,fingerprint);render(audits);renderArchitecture();
-        System.out.println("PASS TECTONIC TERRAIN V4: native 256-block size 1; exact integral upscales; "+supportCases+" bounded-support/cold cases; six-seed mean land="+mean+"%; fingerprint="+fingerprint);
+        System.out.println("PASS TECTONIC TERRAIN V7: native 256-block size 1; exact integral upscales; "+supportCases+" bounded-support/cold cases; six-seed mean land="+mean+"%; fingerprint="+fingerprint);
     }
 
     private static Settings size(Settings d,int size) {
         return new Settings(d.coastBlendPermille(),d.seaThreshold(),d.landHeight(),d.oceanDepth(),d.forcingPermille(),d.detailHeight(),d.seaLevel(),
             d.plateWarpPermille(),d.plateRoughnessPermille(),d.plateRelief(),d.plateTilt(),d.elevationOffset(),size);
     }
+    private static void heightCurveChecks() {
+        check(TectonicTerrain.landHeightCurve(0)==0,"Height curve moved the coast");
+        check(TectonicTerrain.landHeightCurve(.25)==.5,"Height curve knee changed");
+        double previous=0,increment=Double.POSITIVE_INFINITY;
+        for(int i=1;i<=10000;i++) {
+            double height=TectonicTerrain.landHeightCurve(i/1000.0),delta=height-previous;
+            check(height>previous&&height<1&&delta<=increment+1e-14,"Height curve must increase with diminishing gain below ceiling");
+            previous=height;increment=delta;
+        }
+        for(double rise:new double[]{.01,.1,.25,.5,1})check(TectonicTerrain.landHeightCurve(rise)>1-StrictMath.exp(-rise),"Low/mid elevation was not lifted");
+        check(Math.abs(TectonicTerrain.landHeightCurve(1e-7)/1e-7-4)<1e-5,"Initial height gain changed");
+        check(TectonicTerrain.landHeightCurve(100)>.997,"Mountains cannot approach the ceiling");
+        rejects(()->TectonicTerrain.landHeightCurve(-1));rejects(()->TectonicTerrain.landHeightCurve(Double.NaN));
+    }
     private static void upscaleChecks() {
         Params p=TectonicTerrain.defaultPlateParams();Settings d=Settings.defaults();var one=new TectonicTerrain(42,p,d);
-        check(one.worldHeight()==256&&one.seaLevel()==63&&one.plateParams.integer("plateSpacing")==65536,"Size-one Minecraft dimensions changed");
+        check(one.worldHeight()==256&&one.seaLevel()==63&&one.plateParams.integer("plateSpacing")==2048,"Size-one Minecraft dimensions changed");
         for(int scale:new int[]{2,3,4}) {
             var up=new TectonicTerrain(42,p,size(d,scale));
-            check(up.worldHeight()==256*scale&&up.seaLevel()==63*scale&&up.plateParams.integer("plateSpacing")==65536*scale,"Native dimensions did not upscale");
+            check(up.worldHeight()==256*scale&&up.seaLevel()==63*scale&&up.plateParams.integer("plateSpacing")==2048*scale,"Native dimensions did not upscale");
             for(int z=-9;z<=9;z++)for(int x=-9;x<=9;x++) {
                 long wx=x*7919L+317,wz=z*6151L-911;Sample a=one.sample(wx,wz),b=up.sample(wx*scale,wz*scale),inside=up.sample(wx*scale+scale-1,wz*scale+scale-1);
                 check(a.owner().id()==b.owner().id()&&a.continentId()==b.continentId()&&a.crustFraction()==b.crustFraction(),"Upscale changed tectonic identity");
@@ -277,8 +292,8 @@ final class TectonicTerrainGates {
     }
 
     private static void write(List<Audit> audits,int cases,double mean,String fingerprint)throws Exception {
-        StringBuilder json=new StringBuilder("{\n  \"experiment\":\"tectonic-terrain-v4\",\n  \"status\":\"Minecraft-native bounded surface with exact integral upscales\",\n")
-            .append("  \"preset\":{\"size\":1,\"worldHeight\":256,\"plateSpacing\":65536,\"continentalPercent\":53,\"seaLevel\":63,\"elevationOffset\":-53,\"targetLandPercent\":30},\n")
+        StringBuilder json=new StringBuilder("{\n  \"experiment\":\"tectonic-terrain-v7\",\n  \"status\":\"Minecraft-native bounded surface with exact integral upscales\",\n")
+            .append("  \"preset\":{\"size\":1,\"worldHeight\":256,\"plateSpacing\":2048,\"continentalPercent\":53,\"seaLevel\":63,\"elevationOffset\":-53,\"targetLandPercent\":30},\n")
             .append("  \"construction\":{\"maximumPlatesPerContinentalGroup\":4,\"singletonsDominant\":true,\"nativeUpscaleMaximum\":4},\n")
             .append("  \"supportCases\":").append(cases).append(",\n  \"fingerprint\":\"").append(fingerprint).append("\",\n  \"sampledMeanLandPercent\":").append(mean)
             .append(",\n  \"sampling\":\"Morphology: 193x193 over 12S. Area: 16384 fixed jittered strata over 128S. No viewport normalization.\",\n  \"audits\":[\n");
@@ -295,7 +310,7 @@ final class TectonicTerrainGates {
             case 4->signed(s.plateSurface(),44);default->blend(new Color(223,232,227),new Color(112,69,134),(s.plateScalePermille()-600)/1200.0);};image.setRGB(p%SIDE,p/SIDE,c.getRGB());}return image;
     }
     private static void render(List<Audit> audits)throws Exception {
-        var image=new BufferedImage(1200,720,BufferedImage.TYPE_INT_RGB);var g=canvas(image,"Minecraft-native tectonic terrain v4","Size 1: Y 0..255, sea Y 63 | six seeds | fixed preset, no viewport normalization");
+        var image=new BufferedImage(1200,720,BufferedImage.TYPE_INT_RGB);var g=canvas(image,"Minecraft-native tectonic terrain v7","Size 1: Y 0..255, sea Y 63 | six seeds | fixed preset, no viewport normalization");
         for(int i=0;i<audits.size();i++){Audit a=audits.get(i);int ox=20+i%3*395,oy=85+i/3*300;g.drawString("Seed "+a.seed+String.format(Locale.ROOT," | %.2f%% land | %d plates",a.localLand,a.visiblePlates),ox,oy);g.drawImage(map(a.samples,0),ox,oy+10,280,280,null);}
         g.drawString("Land components are separated continental-crust families of 1-4 plates. Low bed is not yet certified ocean.",20,704);g.dispose();ImageIO.write(image,"png",Path.of("build/gallery/tectonic-terrain.png").toFile());
     }

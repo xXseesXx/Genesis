@@ -2,7 +2,7 @@
 // Optional Node smoke test against a running server. A minimal DOM checks application
 // wiring, not browser layout, painting, accessibility, or native pointer behavior.
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const base=process.argv[2]||'http://127.0.0.1:8787';
+const base=process.argv[2]||'http://localhost:8787';
 class Element {
   constructor(tag='div'){this.tagName=tag;this.children=[];this.value='';this.textContent='';this.dataset={};this.events={};this.checked=false;this.hidden=false;this.classList={toggle(){}};}
   append(...children){this.children.push(...children);}

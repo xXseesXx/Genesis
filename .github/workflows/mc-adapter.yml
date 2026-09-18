@@ -1,0 +1,30 @@
+name: Minecraft adapter
+on:
+  push:
+    paths: ['mc-adapter/**', 'core/**', 'oracle/**', '.github/workflows/mc-adapter.yml']
+  pull_request:
+    paths: ['mc-adapter/**', 'core/**', 'oracle/**', '.github/workflows/mc-adapter.yml']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            25
+      - name: Build, test and reobfuscate
+        working-directory: mc-adapter
+        run: bash gradlew build --console=plain
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: genesis-minecraft-adapter
+          path: |
+            mc-adapter/build/libs/
+            mc-adapter/build/reports/tests/

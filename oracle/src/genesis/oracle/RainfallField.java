@@ -1,7 +1,9 @@
 package genesis.oracle;
 
-/** Immutable coordinate-local rainfall input. Future climate maps implement this same contract.
- * Values are integer model mm/year, 0..10000. This stage assumes all non-maritime rain becomes runoff.
+/** Immutable coordinate-local rainfall input.
+ * Values are integer model mm/year, 0..10000. Terrain-aware implementations may additionally
+ * solve humidity over a complete continental support; ground composition then partitions rain
+ * between infiltration and routed surface runoff.
  */
 @FunctionalInterface
 public interface RainfallField {

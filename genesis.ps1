@@ -75,7 +75,7 @@ try {
             Invoke-QuietNative "gallery $Target" "gallery-$Target" 'java' @('-Djava.awt.headless=true', '-cp', 'build/classes', 'genesis.harness.Gates', 'gallery', $Target)
         }
         'serve' {
-            Write-Host "SERVE http://127.0.0.1:$Port/ (Ctrl+C to stop)"
+            Write-Host "SERVE http://localhost:$Port/ (Ctrl+C to stop)"
             & java '-Djava.awt.headless=true' -cp build/classes genesis.harness.Server $Port
             if ($LASTEXITCODE -ne 0) { throw "serve failed (exit $LASTEXITCODE)" }
         }
