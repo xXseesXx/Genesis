@@ -16,7 +16,11 @@ public final class GenesisBiomeManager extends WorldChunkManager {
     final TerrainColumns columns;
 
     public GenesisBiomeManager(long seed) {
-        columns = new TerrainColumns(seed);
+        this(seed, TerrainColumns.Style.CLASSIC);
+    }
+
+    public GenesisBiomeManager(long seed, TerrainColumns.Style style) {
+        columns = new TerrainColumns(seed, style);
     }
 
     public static BiomeGenBase biome(TerrainColumns.Column column) {

@@ -1,6 +1,6 @@
 # Complete-continent climate, drainage and overflow experiment
 
-2026-09-10, updated 2026-09-18. `continental-hydrology-v4` is layered on Minecraft-native `tectonic-terrain-v7`. It solves a complete bounded continental family, couples the production path to `terrain-climate-v1` and `terrain-substrate-v1`, composes optional hydraulic incision and conservative slope relaxation, then builds `fluvial-network-v2` from the final terrain. The original no-erosion/uniform-rain constructors remain for compatibility fixtures; they are not the viewer or adapter defaults.
+2026-09-10, updated 2026-09-22. `continental-hydrology-v4` is layered on Minecraft-native `tectonic-terrain-v8`. It solves a complete bounded continental family, couples the production path to `terrain-climate-v1` and `terrain-substrate-v1`, composes optional hydraulic incision and conservative slope relaxation, then builds `fluvial-network-v4` from the final terrain. The original no-erosion/uniform-rain constructors remain for compatibility fixtures; they are not the viewer or adapter defaults.
 
 The detailed climate/material choices are recorded in [climate, ground and drainage](climate-ground-hydrology.md), the morphology target and implementation checklist in [the fluvial hydrology revamp](fluvial-hydrology-revamp.md), and incision mechanics in [the erosion contract](continental-erosion.md).
 
@@ -13,7 +13,7 @@ turn enclosed above-sea terrain into ocean.
 
 The cache/work unit is a **complete irregular continental plate family**, not a display rectangle, single plate or drainage basin ID. It includes all of that family's sampled land and submerged interior, possibly several islands. Rivers can cross member-plate boundaries and have many sea mouths. The 1–4-plate family bounds the work; actual ownership determines active vertices. This is a consequence of the current ocean-separated geography, not permission to treat arbitrary plate boundaries as watershed divides.
 
-The hydrological lattice has a fixed world origin and spacing `ceil(plateSpacing / 64)`, independent of crop and zoom. With the v7 default plate spacing 2,048, step is 32 blocks; it was 128 at the immediately prior 8,192 preset. Each member contributes the same normalized support enclosure, so a default single still allocates about 449² vertices and a multi-plate family can allocate about 513². The fourfold X/Z shrink therefore does not multiply work inside one root. It can expose 16 times as many roots over an equal explored world area, making LRU churn during fast travel a distinct risk.
+The hydrological lattice has a fixed world origin and spacing `ceil(plateSpacing / 64)`, independent of crop and zoom. With the v8 default plate spacing 2,048, step is 32 blocks; it was 128 at the prior 8,192 preset. Each member contributes the same normalized support enclosure, so a default single still allocates about 449² vertices and a multi-plate family can allocate about 513². The fourfold X/Z shrink therefore does not multiply work inside one root. It can expose 16 times as many roots over an equal explored world area, making LRU churn during fast travel a distinct risk.
 
 For each member lattice cell `(i,j)`, a conservative enclosing box spans `[i-3, i+4] × [j-3, j+4]` plate spacings. The family box encloses their union and rounds outward to the canonical lattice. Rectangle edges are inactive padding, **never outlets**. A wider reference that disables the ownership shortcut must reproduce active terrain, spill levels, receivers and flux. Near the numeric coordinate guard, an incomplete whole-family enclosure is unavailable; no cropped fallback or artificial edge terminal is invented.
 
@@ -25,7 +25,7 @@ This classification belongs to the canonical sampled model. It is not a proof of
 
 ## Coupled build ordering
 
-1. Sample raw v7 terrain and immutable near-surface lithology on every owned node; quantize height to integer millimetres while preserving the land/sea sign.
+1. Sample raw v8 terrain and immutable near-surface lithology on every owned node; quantize height to integer millimetres while preserving the land/sea sign.
 2. Classify the connected maritime component.
 3. Evaluate global analytic wind and run 24 fixed semi-Lagrangian humidity passes over the canonical support. Maritime/inactive cells replenish moisture; directional terrain rise enhances windward rain and creates a lee shadow. Climate sees pre-incision relief, avoiding a final-field recursion.
 4. Convert rock permeability/weatherability, humidity and local slope into soil depth plus exact runoff/infiltration/evapotranspiration shares summing to 1,000 permille. Only surface runoff becomes a routing source.

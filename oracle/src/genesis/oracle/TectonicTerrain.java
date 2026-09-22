@@ -1,7 +1,6 @@
 package genesis.oracle;
 
 import genesis.core.Params;
-import genesis.core.fields.Noise;
 import genesis.core.hash.Hash64;
 import genesis.core.hash.Lattice;
 import genesis.oracle.BoundaryForcing.Plate;
@@ -15,7 +14,7 @@ import java.util.Map;
 
 /** Experimental sparse-plate terrain; deterministic and bounded, with no hydrological terminals. */
 public final class TectonicTerrain {
-    public static final String VERSION="tectonic-terrain-v7";
+    public static final String VERSION="tectonic-terrain-v8";
     public record Settings(int coastBlendPermille,int seaThreshold,int landHeight,int oceanDepth,
                            int forcingPermille,int detailHeight,int seaLevel,int plateWarpPermille,
                            int plateRoughnessPermille,int plateRelief,int plateTilt,int elevationOffset,int size) {
@@ -45,7 +44,7 @@ public final class TectonicTerrain {
     private record CrustState(double fraction,double rawSigned,double envelope,Group group) {}
     private final IrregularPlates plates;
     private final ContinentalGroups groups;
-    private final Noise detail;
+    private final MoreNoise detail;
     private final int transformRatio,coverage;
     // Only a performance cache; evicting/reordering entries cannot change values.
     private final Map<Long,PlateResponse.Response> responses=new java.util.LinkedHashMap<>(256,.75f,true) {
@@ -62,7 +61,7 @@ public final class TectonicTerrain {
         if(params==null||settings==null)throw new IllegalArgumentException("Complete terrain configuration required");
         this.seed=seed;this.basePlateParams=params;this.plateParams=scaled(params,settings.size);this.settings=settings;transformRatio=params.integer("transformRatio");coverage=params.integer("continentalPercent");
         plates=new IrregularPlates(seed,params,settings.plateWarpPermille,settings.plateRoughnessPermille);groups=new ContinentalGroups(seed);
-        detail=new Noise(Hash64.stream(seed,0x5445434445544149L),new Params(Map.of("wavelength",(double)Math.max(16,plates.spacing/8),"octaves",4.0)));
+        detail=new MoreNoise(Hash64.stream(seed,0x5445434445544149L),Math.max(16,plates.spacing/8),4);
     }
 
     private static Params scaled(Params base,int size) {
@@ -115,12 +114,43 @@ public final class TectonicTerrain {
         return Math.max(1,Math.min(255,y));
     }
 
-    /** Concave hyperbolic saturation: fourfold initial gain, gentle high-mountain tail.
-     * Returns the fraction of above-sea build space occupied by normalized tectonic rise.
+    /** Linear native-height transfer with a finite-column ceiling.
+     * Spatial variation belongs to the derivative-aware terrain signal, not this transfer.
      */
     public static double landHeightCurve(double rise) {
         if(!Double.isFinite(rise)||rise<0)throw new IllegalArgumentException("Finite nonnegative rise required");
-        return rise/(rise+.25);
+        return Math.min(1,rise);
+    }
+
+    /** Iñigo Quílez's derivative-damped fBm using analytic quintic value-noise derivatives. */
+    private static final class MoreNoise {
+        private static final long DOMAIN=0x4d4f52454e4f4953L;
+        private final long seed;
+        private final int wavelength,octaves;
+        private record Value(double height,double dx,double dz) {}
+        MoreNoise(long seed,int wavelength,int octaves) {
+            this.seed=Hash64.stream(seed,DOMAIN);this.wavelength=wavelength;this.octaves=octaves;
+        }
+        double sample(long x,long z) {
+            int spacing=wavelength;double weight=.5,total=0,weights=0,dx=0,dz=0;
+            for(int octave=0;octave<octaves;octave++) {
+                Value value=value(x,z,spacing,octave);dx+=value.dx;dz+=value.dz;
+                total+=weight*value.height/(1+dx*dx+dz*dz);weights+=weight;
+                weight*=.5;spacing=Math.max(1,spacing/2);
+            }
+            return total/weights;
+        }
+        private Value value(long x,long z,int spacing,int octave) {
+            long i=Lattice.cell(x,spacing),j=Lattice.cell(z,spacing);
+            double fx=Lattice.fraction(x,spacing),fz=Lattice.fraction(z,spacing);
+            double u=fade(fx),v=fade(fz),du=fadeDerivative(fx),dv=fadeDerivative(fz);
+            double a=random(octave,i,j),b=random(octave,i+1,j),c=random(octave,i,j+1),d=random(octave,i+1,j+1);
+            double k0=a,k1=b-a,k2=c-a,k3=a-b-c+d;
+            return new Value(k0+k1*u+k2*v+k3*u*v,du*(k1+k3*v),dv*(k2+k3*u));
+        }
+        private double random(int octave,long i,long j){return Hash64.signedUnit(Hash64.hash(seed,octave,i,j));}
+        private static double fade(double t){return t*t*t*(t*(t*6-15)+10);}
+        private static double fadeDerivative(double t){return 30*t*t*(t*(t-2)+1);}
     }
 
     public Site plateSite(long i,long j){return scaled(plates.site(i,j));}

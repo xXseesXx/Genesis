@@ -11,7 +11,7 @@ import java.util.List;
  * neighborhood and a fixed number of curve chords, independent of crop/chunk order.
  */
 public final class FluvialNetwork {
-    public static final String VERSION="fluvial-network-v2";
+    public static final String VERSION="fluvial-network-v5";
     public static final double SECONDS_PER_YEAR=365.2425*24*60*60;
     /** Bounded formative-event proxy; mean flow remains separately available. */
     public static final double BANKFULL_MULTIPLIER=12;
@@ -66,21 +66,28 @@ public final class FluvialNetwork {
     private static final class MutableLake {
         final int component,minCell,surface;
         int cells,spill=-1,outlet=-1;
-        long maxFlux,spillFlux=-1,minX=Long.MAX_VALUE,minZ=Long.MAX_VALUE,maxX=Long.MIN_VALUE,maxZ=Long.MIN_VALUE;
+        long maxFlux,outflow,spillFlux=-1,minX=Long.MAX_VALUE,minZ=Long.MAX_VALUE,maxX=Long.MIN_VALUE,maxZ=Long.MIN_VALUE;
         double maxDepth;
         MutableLake(int component,int minCell,int surface){this.component=component;this.minCell=minCell;this.surface=surface;}
     }
     private record Closest(double distance,double t,double x,double z,double tangentX,double tangentZ) {}
 
     private final ContinentalHydrology.Root root;
+    private final HydrologyTuning tuning;
     private final long[] contributingCells;
     private final int[] strahler,lakeByCell;
     private final Profile[] profiles;
+    private final java.util.Map<Integer,Profile> branches=new java.util.HashMap<>();
     private final List<Lake> lakes;
 
     FluvialNetwork(ContinentalHydrology.Root root) {
+        this(root,HydrologyTuning.defaults());
+    }
+
+    FluvialNetwork(ContinentalHydrology.Root root,HydrologyTuning tuning) {
         if(root==null)throw new IllegalArgumentException("Hydrology root required");
-        this.root=root;int n=root.size();
+        if(tuning==null)throw new IllegalArgumentException("Hydrology tuning required");
+        this.root=root;this.tuning=tuning;int n=root.size();
         contributingCells=new long[n];strahler=new int[n];lakeByCell=new int[n];profiles=new Profile[n];
         Arrays.fill(lakeByCell,-1);
         int[] sequence=new int[n],maxIncoming=new int[n],equalMax=new int[n];Arrays.fill(sequence,-1);
@@ -95,12 +102,23 @@ public final class FluvialNetwork {
             int incoming=maxIncoming[p],value=incoming==0?(root.sea(p)?0:1):incoming+(equalMax[p]>=2?1:0);strahler[p]=value;
             int q=root.downstream(p);if(q>=0&&value>0){if(value>maxIncoming[q]){maxIncoming[q]=value;equalMax[q]=1;}else if(value==maxIncoming[q])equalMax[q]++;}}
         lakes=buildLakes();
-        long threshold=minimumChannelFlux(root.step);
+        long threshold=Math.multiplyExact(tuning.minimumChannelCells(),(long)root.step*root.step);
         for(int p=0;p<n;p++) {
-            int q=root.downstream(p);if(q<0||root.sea(p)||lakeByCell[p]>=0||root.flux(p)<threshold)continue;
+            int q=root.downstream(p);long channelFlux=root.primaryFlux(p);
+            int lake=lakeByCell[p];
+            // Lake interiors have no channel profile. Every exit branch begins at its
+            // actual lake source cell, preserving lake-to-river continuity.
+            if(q<0||root.sea(p)||(lake>=0&&lakeByCell[q]==lake)||channelFlux<threshold)continue;
             double dx=root.x(q)-root.x(p),dz=root.z(q)-root.z(p),distance=StrictMath.hypot(dx,dz);
             double slope=Math.max(0,(root.filled(p)-root.filled(q))/1000.0/distance);
-            profiles[p]=hydraulicProfile(root.flux(p),root.step,slope,root.hardness(p),Math.max(1,strahler[p]));
+            profiles[p]=hydraulicProfile(channelFlux,root.step,slope,root.hardness(p),Math.max(1,strahler[p]),tuning);
+        }
+        for(int p=0;p<n;p++)if(!root.sea(p))for(int edge=0;edge<root.receiverCount(p);edge++) {
+            int q=root.receiver(p,edge);long flux=root.edgeFlux(p,edge);
+            if(q==root.downstream(p)||flux<threshold||(lakeByCell[p]>=0&&lakeByCell[p]==lakeByCell[q]))continue;
+            double distance=StrictMath.hypot(root.x(q)-root.x(p),root.z(q)-root.z(p));
+            branches.put(p*8+edge,hydraulicProfile(flux,root.step,Math.max(0,(root.filled(p)-root.filled(q))/1000.0/distance),
+                root.hardness(p),Math.max(1,strahler[p]),tuning));
         }
     }
 
@@ -108,6 +126,10 @@ public final class FluvialNetwork {
     public long contributingArea(int p){return Math.multiplyExact(contributingCells(p),(long)root.step*root.step);}
     public int strahlerOrder(int p){return valid(p)?strahler[p]:0;}
     public Profile profile(int sourceSegment){return valid(sourceSegment)?profiles[sourceSegment]:null;}
+    /** Profile of an actual apportioned flow edge, including secondary branches. */
+    public Profile edgeProfile(int p,int edge) {
+        return root.receiver(p,edge)==root.downstream(p)?profiles[p]:branches.get(p*8+edge);
+    }
     public Profile profile(int sourceSegment,double t) {
         Profile source=profile(sourceSegment);int q=valid(sourceSegment)?root.downstream(sourceSegment):-1;
         if(source==null||!Double.isFinite(t)||t<0||t>1)throw new IllegalArgumentException("Invalid profile sample");
@@ -120,7 +142,7 @@ public final class FluvialNetwork {
         return c<0?null:lakes.get(c);
     }
     public List<Lake> lakes(){return lakes;}
-    public int maximumSegmentsPerQuery(){int side=2*QUERY_RADIUS+1;return side*side;}
+    public int maximumSegmentsPerQuery(){int side=2*QUERY_RADIUS+1;return side*side*8;}
     public int maximumCurveChordsPerQuery(){return maximumSegmentsPerQuery()*CURVE_SUBDIVISIONS*3;}
 
     public static long minimumChannelFlux(int step) {
@@ -147,13 +169,19 @@ public final class FluvialNetwork {
 
     /** Manning-style rectangular sections constrained by an empirical Q^1/2 width prior. */
     public static Profile hydraulicProfile(long flux,int step,double slope,double hardness,int order) {
+        return hydraulicProfile(flux,step,slope,hardness,order,HydrologyTuning.defaults());
+    }
+
+    private static Profile hydraulicProfile(long flux,int step,double slope,double hardness,int order,HydrologyTuning tuning) {
         if(flux<0||step<1||!Double.isFinite(slope)||slope<0||!Double.isFinite(hardness)||hardness<0||hardness>1||order<1)
             throw new IllegalArgumentException("Invalid hydraulic profile inputs");
-        double mean=meanDischarge(flux),bank=mean*BANKFULL_MULTIPLIER;
+        double mean=meanDischarge(flux),bank=mean*tuning.bankfullMultiplier();
         if(mean==0)return new Profile(0,0,0,0,0,0,0,0,0,slope,.035,order,Planform.STRAIGHT,0,0);
-        double bankWidth=CHANNEL_WIDTH_MULTIPLIER*Math.min(step*MAX_BANKFULL_WIDTH_FRACTION,Math.max(.75,3.5*StrictMath.sqrt(bank)));
+        double widthMultiplier=tuning.channelWidthMultiplier();
+        double bankWidth=widthMultiplier*Math.min(step*MAX_BANKFULL_WIDTH_FRACTION,Math.max(.75,3.5*StrictMath.sqrt(bank)));
         double provisionalDepth=manningDepth(bank,bankWidth,.035,slope,step*.20);
         Planform form=classify(slope,hardness,order,bankWidth/Math.max(.01,provisionalDepth));
+        if(!tuning.braidedChannels()&&form==Planform.BRAIDED)form=Planform.MEANDERING;
         double roughness=switch(form) {
             case CASCADE->.045+.020*hardness;
             case STRAIGHT->.025+.012*hardness;
@@ -161,10 +189,10 @@ public final class FluvialNetwork {
             case BRAIDED->.030+.015*(1-hardness);
         };
         double bankDepth=manningDepth(bank,bankWidth,roughness,slope,step*.20);
-        double currentWidth=Math.min(bankWidth,Math.max(.35*CHANNEL_WIDTH_MULTIPLIER,bankWidth*StrictMath.pow(mean/bank,.45)));
+        double currentWidth=Math.min(bankWidth,Math.max(.35*widthMultiplier,bankWidth*StrictMath.pow(mean/bank,.45)));
         double currentDepth=Math.min(bankDepth,manningDepth(mean,currentWidth,roughness,slope,bankDepth));
         double bankVelocity=bank/(bankWidth*bankDepth),currentVelocity=mean/(currentWidth*currentDepth);
-        double amplitude=Math.min(step*MAX_DISPLACEMENT_FRACTION,bankWidth*switch(form){case CASCADE->.08;case STRAIGHT->.25;case MEANDERING->1.70;case BRAIDED->.75;});
+        double amplitude=Math.min(step*tuning.meanderLimit(),bankWidth*switch(form){case CASCADE->.08;case STRAIGHT->.25;case MEANDERING->1.70;case BRAIDED->.75;});
         double wavelength=Math.max(bankWidth*10,Math.min(bankWidth*14,bankWidth*12));
         return new Profile(flux,mean,bank,bankWidth,bankDepth,bankVelocity,currentWidth,currentDepth,currentVelocity,
             slope,roughness,order,form,amplitude,wavelength);
@@ -189,6 +217,14 @@ public final class FluvialNetwork {
     /** Cubic downstream tangent plus zero-end-slope oscillation, with exact inherited endpoints. */
     public CenterlinePoint centerline(int sourceSegment,double t) {
         Profile profile=profile(sourceSegment);int q=valid(sourceSegment)?root.downstream(sourceSegment):-1;
+        return centerline(sourceSegment,q,profile,t);
+    }
+
+    public CenterlinePoint edgeCenterline(int p,int edge,double t) {
+        return centerline(p,root.receiver(p,edge),edgeProfile(p,edge),t);
+    }
+
+    private CenterlinePoint centerline(int sourceSegment,int q,Profile profile,double t) {
         if(profile==null||q<0||!Double.isFinite(t)||t<0||t>1)throw new IllegalArgumentException("Invalid channel segment/sample");
         double ax=root.x(sourceSegment),az=root.z(sourceSegment),bx=root.x(q),bz=root.z(q);
         if(t==0)return new CenterlinePoint(ax,az,0);if(t==1)return new CenterlinePoint(bx,bz,0);
@@ -208,18 +244,22 @@ public final class FluvialNetwork {
         double envelope=StrictMath.sin(StrictMath.PI*t);envelope*=envelope;
         double offset=profile.centerlineAmplitude*envelope*StrictMath.sin(2*StrictMath.PI*waves*t+phase);
         double lx=ax+dx*t,lz=az+dz*t,cx=hx+nx*offset,cz=hz+nz*offset;
-        double deviation=StrictMath.hypot(cx-lx,cz-lz),maximum=root.step*MAX_DISPLACEMENT_FRACTION;
+        double deviation=StrictMath.hypot(cx-lx,cz-lz),maximum=root.step*tuning.meanderLimit();
         if(deviation>maximum){double scale=maximum/deviation;cx=lx+(cx-lx)*scale;cz=lz+(cz-lz)*scale;deviation=maximum;}
         return new CenterlinePoint(cx,cz,deviation);
     }
 
     /** Center thread (0) or one of the two braided threads (-1/+1); all share exact endpoints. */
     public CenterlinePoint threadCenterline(int sourceSegment,double t,int thread) {
+        return threadCenterline(sourceSegment,root.downstream(sourceSegment),profiles[sourceSegment],t,thread);
+    }
+
+    private CenterlinePoint threadCenterline(int sourceSegment,int q,Profile profile,double t,int thread) {
         if(thread<-1||thread>1)throw new IllegalArgumentException("Thread must be -1, 0, or 1");
-        CenterlinePoint center=centerline(sourceSegment,t);Profile profile=profiles[sourceSegment];
+        CenterlinePoint center=centerline(sourceSegment,q,profile,t);
         if(thread==0||profile.planform!=Planform.BRAIDED||t==0||t==1)return center;
         double epsilon=1.0/CURVE_SUBDIVISIONS;
-        CenterlinePoint before=centerline(sourceSegment,Math.max(0,t-epsilon)),after=centerline(sourceSegment,Math.min(1,t+epsilon));
+        CenterlinePoint before=centerline(sourceSegment,q,profile,Math.max(0,t-epsilon)),after=centerline(sourceSegment,q,profile,Math.min(1,t+epsilon));
         double dx=after.x-before.x,dz=after.z-before.z,length=StrictMath.hypot(dx,dz);
         if(length==0)return center;
         double envelope=StrictMath.sin(StrictMath.PI*t);envelope*=envelope;
@@ -227,10 +267,10 @@ public final class FluvialNetwork {
         return new CenterlinePoint(center.x-dz/length*separation,center.z+dx/length*separation,center.displacement+Math.abs(separation));
     }
 
-    private Closest closest(int sourceSegment,long x,long z,int thread) {
-        CenterlinePoint previous=threadCenterline(sourceSegment,0,thread);Closest best=null;
+    private Closest closest(int sourceSegment,int q,Profile profile,long x,long z,int thread) {
+        CenterlinePoint previous=threadCenterline(sourceSegment,q,profile,0,thread);Closest best=null;
         for(int chord=0;chord<CURVE_SUBDIVISIONS;chord++) {
-            CenterlinePoint next=threadCenterline(sourceSegment,(chord+1.0)/CURVE_SUBDIVISIONS,thread);
+            CenterlinePoint next=threadCenterline(sourceSegment,q,profile,(chord+1.0)/CURVE_SUBDIVISIONS,thread);
             double vx=next.x-previous.x,vz=next.z-previous.z,length2=vx*vx+vz*vz;
             double local=length2==0?0:Math.max(0,Math.min(1,((x-previous.x)*vx+(z-previous.z)*vz)/length2));
             double px=previous.x+local*vx,pz=previous.z+local*vz,distance=StrictMath.hypot(x-px,z-pz),length=StrictMath.sqrt(length2);
@@ -262,18 +302,24 @@ public final class FluvialNetwork {
         Channel best=null;
         for(int dz=-QUERY_RADIUS;dz<=QUERY_RADIUS;dz++)for(int dx=-QUERY_RADIUS;dx<=QUERY_RADIUS;dx++) {
             int ix=cx+dx,iz=cz+dz;if(ix<0||iz<0||ix>=root.bounds.width()||iz>=root.bounds.height())continue;
-            int p=iz*root.bounds.width()+ix,q=root.downstream(p);Profile profile=profiles[p];
+            int p=iz*root.bounds.width()+ix;
+            for(int edge=0;edge<root.receiverCount(p);edge++) {
+            int q=root.receiver(p,edge);Profile profile=edgeProfile(p,edge);
             if(q<0||profile==null)continue;
             int lake=lakeByCell[p];if(lake>=0&&lakeByCell[q]==lake)continue;
-            Closest centerClosest=closest(p,x,z,0),thread=centerClosest;int threadIndex=0;
+            Closest centerClosest=closest(p,q,profile,x,z,0),thread=centerClosest;int threadIndex=0;
             if(profile.planform==Planform.BRAIDED) {
                 thread=null;
-                for(int candidate:new int[]{-1,1}) {Closest found=closest(p,x,z,candidate);
+                for(int candidate:new int[]{-1,1}) {Closest found=closest(p,q,profile,x,z,candidate);
                     if(thread==null||found.distance<thread.distance){thread=found;threadIndex=candidate;}}
             }
             double t=thread.t;
-            Profile local=interpolate(profile,profiles[q],t);
-            if(best==null||thread.distance<best.threadDistance||(thread.distance==best.threadDistance&&local.flux>best.profile.flux)) {
+            // Each branch carries its allocated discharge to the junction. Interpolating
+            // to the receiver's primary flux would invent/loss water before branches meet.
+            Profile local=profile;
+            if(best==null||thread.distance<best.threadDistance
+                ||thread.distance==best.threadDistance&&(local.flux>best.profile.flux
+                    ||local.flux==best.profile.flux&&t>best.t)) {
                 double bankfullSurface=((1-t)*root.filled(p)+t*root.filled(q))/1000.0;
                 double bed=bankfullSurface-local.bankfullDepth,water=bed+local.currentDepth;
                 int receiving=lakeByCell[q];
@@ -281,8 +327,14 @@ public final class FluvialNetwork {
                     double blend=t*t*(3-2*t),lakeSurface=lakes.get(receiving).surface;
                     water=Math.max(water,water+(lakeSurface-water)*blend);
                 }
+                int sourceLake=lakeByCell[p];
+                if(sourceLake>=0) {
+                    double blend=1-t*t*(3-2*t),lakeSurface=lakes.get(sourceLake).surface;
+                    water=Math.min(bankfullSurface,Math.max(water,water+(lakeSurface-water)*blend));
+                }
                 best=new Channel(p,q,t,threadIndex,centerClosest.distance,thread.distance,centerClosest.x,centerClosest.z,thread.x,thread.z,
                     thread.tangentX,thread.tangentZ,water,bed,bankfullSurface,local);
+            }
             }
         }
         return best;
@@ -340,6 +392,8 @@ public final class FluvialNetwork {
         for(int p=0;p<n;p++)if(lakeByCell[p]>=0) {
             MutableLake lake=mutable.get(lakeByCell[p]);lake.cells++;lake.maxDepth=Math.max(lake.maxDepth,(lake.surface-root.bed(p))/1000.0);
             lake.maxFlux=Math.max(lake.maxFlux,root.flux(p));long x=root.x(p),z=root.z(p);lake.minX=Math.min(lake.minX,x);lake.minZ=Math.min(lake.minZ,z);lake.maxX=Math.max(lake.maxX,x);lake.maxZ=Math.max(lake.maxZ,z);
+            for(int edge=0;edge<root.receiverCount(p);edge++)if(lakeByCell[root.receiver(p,edge)]!=lake.component)
+                lake.outflow=Math.addExact(lake.outflow,root.edgeFlux(p,edge));
             int q=root.downstream(p);if(q<0||lakeByCell[q]!=lake.component) {
                 long flux=root.flux(p);if(lake.spill<0||flux>lake.spillFlux||flux==lake.spillFlux&&p<lake.spill){lake.spill=p;lake.outlet=q;lake.spillFlux=flux;}
             }
@@ -348,7 +402,7 @@ public final class FluvialNetwork {
         for(var lake:mutable) {
             long id=Hash64.hash(seed,lake.surface,root.x(lake.minCell),root.z(lake.minCell));
             result.add(new Lake(lake.component,id,lake.surface,lake.surface/1000.0,lake.maxDepth,
-                lake.spillFlux>=0?lake.spillFlux:lake.maxFlux,lake.cells,lake.spill,lake.outlet,lake.minX,lake.minZ,lake.maxX,lake.maxZ));
+                lake.outflow,lake.cells,lake.spill,lake.outlet,lake.minX,lake.minZ,lake.maxX,lake.maxZ));
         }
         return List.copyOf(result);
     }

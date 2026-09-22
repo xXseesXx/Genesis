@@ -61,7 +61,8 @@ final class TectonicViewGates {
                 check(response.headers().firstValue("X-World-Version").orElse("").equals(TectonicTerrain.VERSION),"Wrong render version");
                 check(response.headers().firstValue("X-Hydrology-Version").orElse("").equals(ContinentalHydrology.VERSION)&&response.headers().firstValue("X-Fluvial-Version").orElse("").equals(FluvialNetwork.VERSION),"Wrong water-model version");
                 check(response.headers().firstValue("X-Climate-Version").orElse("").equals(ClimateField.VERSION)&&response.headers().firstValue("X-Wind-Version").orElse("").equals(WindField.VERSION)
-                    &&response.headers().firstValue("X-Substrate-Version").orElse("").equals(TerrainSubstrate.VERSION),"Wrong climate/ground version");
+                    &&response.headers().firstValue("X-Substrate-Version").orElse("").equals(TerrainSubstrate.VERSION)
+                    &&response.headers().firstValue("X-Dendritic-Version").orElse("").equals(genesis.oracle.DendriticErosion.VERSION),"Wrong climate/ground/dendritic version");
                 check(response.headers().firstValue("X-World-Height").orElse("").equals("512")&&response.headers().firstValue("X-Sea-Level").orElse("").equals("126")&&response.headers().firstValue("X-Native-Scale").orElse("").equals("2"),"Wrong native build dimensions");
                 var image=ImageIO.read(new ByteArrayInputStream(response.body()));check(image.getWidth()==7&&image.getHeight()==6,"Render ignored dimensions");
                 for(int z=0;z<6;z++)for(int x=0;x<7;x++)check(image.getRGB(x,z)==direct.image().getRGB(x,z),"HTTP differs from direct candidate raster");
@@ -91,7 +92,7 @@ final class TectonicViewGates {
             var crop=ImageIO.read(new ByteArrayInputStream(get(client,base,"/api/tectonic/render?x=402048&z=103072&width=6&height=6"+contour).body()));
             for(int z=0;z<6;z++)for(int x=0;x<6;x++)check(wide.getRGB(x+2,z+3)==crop.getRGB(x,z),"Contour depends on crop edges");
             var compactFine=TectonicView.request(TectonicView.query("layer=heightMap&contourInterval=1&step=1&width=1&height=1"));
-            check(TectonicView.contourInterval(compactFine)==4,"Compact v7 contour LOD did not track the fourfold-smaller plate scale");
+            check(TectonicView.contourInterval(compactFine)==4,"Compact v8 contour LOD did not track the fourfold-smaller plate scale");
             var fine=TectonicView.request(TectonicView.query("layer=heightMap&contourInterval=1&step=1&width=1&height=1&plateSpacing=8192"));
             check(TectonicView.contourInterval(fine)==1,"One-block contours are unavailable when the feature scale can resolve them");
             var baseColor=new java.awt.Color(120,180,100);
@@ -117,7 +118,7 @@ final class TectonicViewGates {
             String versioned=text(get(client,base,"/api/tectonic/sample?x=-131072&z=-131072"));
             check(versioned.contains("\"hydrologyVersion\":"+quote(ContinentalHydrology.VERSION))&&versioned.contains("\"fluvialVersion\":"+quote(FluvialNetwork.VERSION))
                 &&versioned.contains("\"climateVersion\":"+quote(ClimateField.VERSION))&&versioned.contains("\"windVersion\":"+quote(WindField.VERSION))
-                &&versioned.contains("\"substrateVersion\":"+quote(TerrainSubstrate.VERSION)),"Inspector missing water/climate/ground versions");
+                &&versioned.contains("\"substrateVersion\":"+quote(TerrainSubstrate.VERSION))&&versioned.contains("\"dendriticVersion\":"+quote(genesis.oracle.DendriticErosion.VERSION)),"Inspector missing water/climate/ground/dendritic versions");
             check(get(client,base,"/api/tectonic/render?layer=riverMap&width=3&height=3&step=2048").statusCode()==200,"Bound rejected a modest multi-family hydrology view");
             check(get(client,base,"/api/tectonic/render?layer=riverMap&width=50&height=50&step=1048576").statusCode()==400,"Unbounded cold multi-continent solve accepted");
             check(get(client,base,"/api/tectonic/render?rainfallMm=10001&width=1&height=1").statusCode()==400,"Invalid rainfall accepted");
@@ -130,7 +131,7 @@ final class TectonicViewGates {
             for(int p=0;p<riverRoot.size();p++)if(riverRoot.status(p)==1&&(mouth<0||riverRoot.flux(p)>riverRoot.flux(mouth)))mouth=p;
             check(mouth>=0&&riverRoot.flux(mouth)>0,"Missing nonzero river fixture");long mx=riverRoot.x(mouth),mz=riverRoot.z(mouth),hs=riverRoot.step;
             String location="x="+(mx-2*hs)+"&z="+(mz-2*hs)+"&step="+(hs/2)+"&width=9&height=9";
-            for(String field:new String[]{"erodedTerrain","erosionDepth","hardness","riverMap","humidity","rainfall","soilDepth","bedrockElevation","bedrockDepth","rockType","infiltration","runoffFraction","drainage","runoff","lakeDepth","waterSurface","drainageStatus"}) {
+            for(String field:new String[]{"erodedTerrain","dendriticTerrain","dendriticDelta","dendriticRidges","erosionDepth","hardness","riverMap","humidity","rainfall","soilDepth","bedrockElevation","bedrockDepth","rockType","infiltration","runoffFraction","drainage","runoff","lakeDepth","waterSurface","drainageStatus"}) {
                 var large=ImageIO.read(new ByteArrayInputStream(get(client,base,"/api/tectonic/render?"+location+"&layer="+field).body()));
                 if(field.equals("riverMap")) {
                     var sub=ImageIO.read(new ByteArrayInputStream(get(client,base,"/api/tectonic/render?x="+(mx-hs)+"&z="+(mz-hs)+"&step="+(hs/2)+"&width=5&height=5&layer="+field).body()));
@@ -186,7 +187,8 @@ final class TectonicViewGates {
             check(channelPoint.contains("\"waterStatus\":"+quote(TectonicView.WATER_STATUS))&&TectonicView.WATER_STATUS.contains("downhill/cross-divide")&&TectonicView.WATER_STATUS.contains("transient storage"),"Water-status caveat is stale");
             var unsupported=text(get(client,base,"/api/tectonic/sample?x="+Lattice.MAX_COORDINATE+"&z="+Lattice.MAX_COORDINATE));
             check(unsupported.contains("\"waterSurface\":null")&&unsupported.contains("\"hydrology\":{\"status\":0"),"Numeric guard became a drainage outlet");
-            for(String layer:new String[]{"erodedTerrain","erosionDepth","hardness"})Files.write(Path.of("build/gallery/tectonic-"+layer+".png"),get(client,base,"/api/tectonic/render?layer="+layer+"&width=384&height=384").body());
+            for(String layer:new String[]{"erodedTerrain","dendriticTerrain","dendriticDelta","dendriticRidges","erosionDepth","hardness"})Files.write(Path.of("build/gallery/tectonic-"+layer+".png"),get(client,base,"/api/tectonic/render?layer="+layer+"&width=384&height=384").body());
+            for(String layer:new String[]{"dendriticTerrain","dendriticDelta","dendriticRidges"})Files.write(Path.of("build/gallery/tectonic-"+layer+"-detail.png"),get(client,base,"/api/tectonic/render?layer="+layer+"&x=1536&z=1536&step=4&width=384&height=384&contourInterval=1").body());
             for(String bad:new String[]{"erosionStrength=-1","erosionStrength=3001"})check(get(client,base,"/api/tectonic/render?"+bad).statusCode()==400,"Invalid erosion accepted");
             Files.writeString(Path.of("build/tectonic-viewer.json"),"{\"model\":\"tectonic-experimental\",\"layers\":"+TectonicView.Layer.values().length+",\"parameters\":"+TectonicView.SPECS.size()+",\"nativeBaseHeight\":256,\"nativeBaseSeaLevel\":63,\"integralUpscale\":true,\"fullscreenLogic\":true,\"httpDirectAgreement\":true,\"continentalRivers\":true,\"climate\":true,\"substrate\":true,\"erosion\":true}\n");
         }

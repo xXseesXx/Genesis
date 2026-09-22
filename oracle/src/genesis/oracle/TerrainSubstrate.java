@@ -36,14 +36,18 @@ public final class TerrainSubstrate implements TerrainHardness {
 
     private final TectonicTerrain world;
     private final Noise folds,texture;
+    private final HydrologyTuning tuning;
 
-    private TerrainSubstrate(TectonicTerrain world) {
-        this.world=world;int spacing=world.basePlateParams.integer("plateSpacing");long seed=Hash64.stream(world.seed,DOMAIN);
+    private TerrainSubstrate(TectonicTerrain world,HydrologyTuning tuning) {
+        this.world=world;this.tuning=tuning;int spacing=world.basePlateParams.integer("plateSpacing");long seed=Hash64.stream(world.seed,DOMAIN);
         folds=new Noise(Hash64.stream(seed,1),new Params(Map.of("wavelength",(double)Math.max(16,spacing/2),"octaves",2.0)));
         texture=new Noise(Hash64.stream(seed,2),new Params(Map.of("wavelength",(double)Math.max(16,spacing/8),"octaves",2.0)));
     }
     public static TerrainSubstrate seeded(TectonicTerrain world) {
-        if(world==null)throw new IllegalArgumentException("Terrain required");return new TerrainSubstrate(world);
+        return seeded(world,HydrologyTuning.defaults());
+    }
+    public static TerrainSubstrate seeded(TectonicTerrain world,HydrologyTuning tuning) {
+        if(world==null||tuning==null)throw new IllegalArgumentException("Terrain and tuning required");return new TerrainSubstrate(world,tuning);
     }
 
     public Base base(long x,long z,TectonicTerrain.Sample terrain) {
@@ -67,11 +71,15 @@ public final class TerrainSubstrate implements TerrainHardness {
         if(base==null||!Double.isFinite(slope)||slope<0||!Double.isFinite(humidity)||humidity<0||humidity>1)
             throw new IllegalArgumentException("Invalid ground inputs");
         double stable=Math.exp(-Math.min(8,slope*18));
-        double soil=clamp(.20+6.4*base.weatherability*humidity*(.28+.72*stable),.15,7.5);
-        double capacity=clamp(base.permeability*(.45+.075*soil)*(1-.52*humidity),.02,.88);
-        int evapotranspirationPermille=(int)Math.round((.16+.20*(1-humidity))*1000);
+        double soil=clamp(.20+tuning.soilDepthGainPermille()/1000.0*base.weatherability*humidity*(.28+.72*stable),.15,7.5);
+        double capacity=clamp(base.permeability*(tuning.infiltrationBasePermille()/1000.0+tuning.infiltrationSoilPermille()/1000.0*soil)
+            *(1-tuning.infiltrationHumidityLossPermille()/1000.0*humidity),.02,.88);
+        int evapotranspirationPermille=(int)Math.round(tuning.wetEvapotranspirationPermille()
+            +tuning.dryEvapotranspirationBonusPermille()*(1-humidity));
+        evapotranspirationPermille=Math.min(1000,evapotranspirationPermille);
         int infiltrationPermille=Math.min(1000-evapotranspirationPermille,(int)Math.round(capacity*1000));
-        int slopeTransfer=Math.min(infiltrationPermille,(int)Math.round(180*Math.min(1,slope/.12)));
+        int slopeTransfer=Math.min(infiltrationPermille,(int)Math.round(tuning.slopeRunoffPermille()
+            *Math.min(1,slope/(tuning.fullSlopeRunoffPermille()/1000.0))));
         infiltrationPermille-=slopeTransfer;
         int runoffPermille=1000-evapotranspirationPermille-infiltrationPermille;
         Drainage drainage=infiltrationPermille>=500?Drainage.WELL_DRAINED:infiltrationPermille>=220?Drainage.MODERATE:Drainage.POOR;

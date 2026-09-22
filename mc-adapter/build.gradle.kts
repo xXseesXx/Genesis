@@ -9,9 +9,9 @@ val terrain by sourceSets.creating {
     java.srcDir("../oracle/src")
     java.include("genesis/core/**")
     listOf("TectonicTerrain", "IrregularPlates", "ContinentalGroups", "PlateResponse",
-        "BoundaryForcing", "JunctionForcing", "ContinentalHydrology", "ActiveHydrology",
-        "ClimateField", "FluvialNetwork", "HydraulicErosion", "MassWasting", "RainfallField",
-        "TerrainHardness", "TerrainSubstrate", "WindField").forEach {
+        "BoundaryForcing", "JunctionForcing", "ContinentalHydrology", "AdaptiveHydrology", "ActiveHydrology",
+        "ClimateField", "FluvialNetwork", "HydraulicErosion", "HydrologyTuning", "MassWasting", "RainfallField",
+        "DendriticErosion", "TerrainHardness", "TerrainSubstrate", "WindField").forEach {
         java.include("genesis/oracle/$it.java")
     }
 }

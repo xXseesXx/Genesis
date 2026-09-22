@@ -13,13 +13,14 @@ import java.util.concurrent.CompletionException;
  * Optional deterministic bedrock erosion; not transient storage or a proof of fine drainage.
  */
 public final class ContinentalHydrology {
-    public static final String VERSION="continental-hydrology-v4";
+    public static final String VERSION="continental-hydrology-v6";
     public static final int SAMPLES_PER_SPACING=64;
     public final TectonicTerrain world;
     public final RainfallField rainfall;
     public final TerrainHardness hardness;
     public final ClimateField climate;
     public final TerrainSubstrate substrate;
+    public final HydrologyTuning tuning;
     public final int erosionStrength;
     public final int step;
     private final int capacity;
@@ -33,12 +34,16 @@ public final class ContinentalHydrology {
         this(world,rainfall,capacity,0,TerrainHardness.seeded(world));
     }
     public ContinentalHydrology(TectonicTerrain world,RainfallField rainfall,int capacity,int erosionStrength,TerrainHardness hardness) {
+        this(world,rainfall,capacity,erosionStrength,hardness,HydrologyTuning.defaults());
+    }
+    public ContinentalHydrology(TectonicTerrain world,RainfallField rainfall,int capacity,int erosionStrength,TerrainHardness hardness,HydrologyTuning tuning) {
         if(world==null||rainfall==null||capacity<1||capacity>32)throw new IllegalArgumentException("Invalid hydrology context");
-        if(hardness==null||erosionStrength<0||erosionStrength>3000)throw new IllegalArgumentException("Invalid erosion context");
-        this.hardness=hardness;this.erosionStrength=erosionStrength;
+        if(hardness==null||tuning==null||erosionStrength<0||erosionStrength>3000)throw new IllegalArgumentException("Invalid erosion context");
+        this.hardness=hardness;this.erosionStrength=erosionStrength;this.tuning=tuning;
         climate=rainfall instanceof ClimateField value?value:null;
         substrate=hardness instanceof TerrainSubstrate value?value:null;
-        this.world=world;this.rainfall=rainfall;this.capacity=capacity;concurrentBuilds=Math.min(4,capacity);step=(world.plateParams.integer("plateSpacing")+SAMPLES_PER_SPACING-1)/SAMPLES_PER_SPACING;
+        this.world=world;this.rainfall=rainfall;this.capacity=capacity;concurrentBuilds=Math.min(4,capacity);
+        step=(world.plateParams.integer("plateSpacing")+tuning.samplesPerPlate()-1)/tuning.samplesPerPlate();
     }
     public record Bounds(long x,long z,int width,int height) {}
     public Bounds bounds(Group group) {
@@ -134,7 +139,7 @@ public final class ContinentalHydrology {
         private final FluvialNetwork fluvial;
         private Root(Group group,Bounds bounds,int step,int[] bed,int[] original,double[] hardness,boolean[] active,boolean[] sea,long[] source,
                      short[] rainfall,short[] humidity,short[] soilDepth,short[] runoff,short[] infiltration,byte[] rock,WindField wind,
-                     ActiveHydrology.Result solve,long moved,long startedNanos) {
+                     ActiveHydrology.Result solve,long moved,HydrologyTuning tuning,long startedNanos) {
             this.original=original;this.hardness=hardness;
             long removed=0;for(int p=0;p<bed.length;p++)removed=Math.addExact(removed,(long)original[p]-bed[p]);
             exportedSediment=java.math.BigInteger.valueOf(removed).multiply(java.math.BigInteger.valueOf((long)step*step));
@@ -143,7 +148,7 @@ public final class ContinentalHydrology {
             this.rainfall=rainfall;this.humidity=humidity;this.soilDepth=soilDepth;this.runoff=runoff;this.infiltration=infiltration;
             this.rock=rock;this.wind=wind;
             int a=0,t=0,l=0;for(int p=0;p<bed.length;p++){if(active[p])a++;if(sea[p])t++;if(active[p]&&!sea[p]&&solve.resolved(p)&&solve.filled(p)>bed[p])l++;}activeCells=a;terminalCells=t;lakeCells=l;
-            fluvial=new FluvialNetwork(this);buildNanos=System.nanoTime()-startedNanos;
+            fluvial=new FluvialNetwork(this,tuning);buildNanos=System.nanoTime()-startedNanos;
         }
         public int size(){return bed.length;}
         public long x(int p){return bounds.x+(p%bounds.width)*(long)step;}
@@ -200,6 +205,12 @@ public final class ContinentalHydrology {
         public int filled(int p){return solve.filled(p);}
         public long source(int p){return source[p];}
         public long flux(int p){return solve.flux(p);}
+        /** Number of proportional runoff edges leaving this coarse cell. */
+        public int receiverCount(int p){return valid(p)?solve.receiverCount(p):0;}
+        public int receiver(int p,int edge){return solve.receiver(p,edge);}
+        public long edgeFlux(int p,int edge){return solve.edgeFlux(p,edge);}
+        /** Discharge on the primary diagnostic edge; other branches expose edgeFlux. */
+        public long primaryFlux(int p){return valid(p)?solve.primaryFlux(p):0;}
         public int downstream(int p){return solve.downstream(p);}
         public int order(int p){return solve.order(p);}
         public long supplied(){return solve.supplied;}
@@ -268,14 +279,14 @@ public final class ContinentalHydrology {
             }
         }
         int[] original=bed.clone();
-        var evolution=HydraulicErosion.evolve(w,h,bed,active,sea,source,resistance,exposure,step,seaHeight,erosionStrength);
+        var evolution=HydraulicErosion.evolve(w,h,bed,active,sea,source,resistance,exposure,step,seaHeight,erosionStrength,tuning);
         if(substrate!=null)for(int p=0;p<n;p++)if(active[p]&&!sea[p]) {
             var base=new TerrainSubstrate.Base(TerrainSubstrate.Rock.values()[Byte.toUnsignedInt(rock[p])],resistance[p],permeability[p],weatherability[p]);
             var ground=substrate.ground(base,slope(p,w,h,bed,active,step),Short.toUnsignedInt(humidity[p])/1000.0);
             soilDepth[p]=(short)Math.round(ground.soilDepth()*1000);
         }
         return new Root(group,bounds,step,bed,original,resistance,active,sea,source,localRain,humidity,soilDepth,runoff,infiltration,rock,
-            climate==null?null:climate.wind(),evolution.flow(),evolution.massWasting().movedHeightMillimetres(),start);
+            climate==null?null:climate.wind(),evolution.flow(),evolution.massWasting().movedHeightMillimetres(),tuning,start);
     }
     public static int millimetres(double height,int seaLevel) {
         long mm=Math.round(height*1000);if(height>seaLevel)mm=Math.max(mm,seaLevel*1000L+1);else mm=Math.min(mm,seaLevel*1000L);return Math.toIntExact(mm);

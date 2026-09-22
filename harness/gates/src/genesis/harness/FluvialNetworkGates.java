@@ -23,11 +23,12 @@ final class FluvialNetworkGates {
         var dryRoot=new ContinentalHydrology(world,new RainfallField.Uniform(0),1).root(group);
         TopologySummary topology=topology(wetRoot,dryRoot);
         int lakes=lakes(wetRoot,dryRoot);
+        int lakeOutlets=lakeOutlets(wetRoot);
         GeometrySummary geometry=geometry(wetRoot);
         int backwater=lakeBackwater(wetRoot);
         int counterfactualBraids=0;
         deterministic(world,wetRoot,geometry.segment);
-        System.out.println("PASS FLUVIAL NETWORK: exact rainfall-independent area/Strahler, face-connected flat lakes, inlet backwater, discharge hydraulics, two-thread braids, curved deterministic queries and fixed work; channels="+geometry.channels+", cascade="+geometry.cascade+", straight="+geometry.straight+", meandering="+geometry.meandering+", defaultBraided="+geometry.braided+", softWetBraided="+counterfactualBraids+", lakes="+lakes+", backwaterInlets="+backwater+", maxOrder="+topology.maximumOrder);
+        System.out.println("PASS FLUVIAL NETWORK: exact rainfall-independent area/Strahler, face-connected flat lakes, spill-origin outlets, inlet backwater, discharge hydraulics, two-thread braids, curved deterministic queries and fixed work; channels="+geometry.channels+", cascade="+geometry.cascade+", straight="+geometry.straight+", meandering="+geometry.meandering+", defaultBraided="+geometry.braided+", softWetBraided="+counterfactualBraids+", lakes="+lakes+", lakeOutlets="+lakeOutlets+", backwaterInlets="+backwater+", maxOrder="+topology.maximumOrder);
     }
 
     private static void hydraulicFixtures() {
@@ -119,7 +120,11 @@ final class FluvialNetworkGates {
             check(ids.add(lake.id()),"Duplicate stable lake id");
             check(counts[lake.component()]==lake.cellCount(),"Lake cell count mismatch");
             close(depths[lake.component()],lake.maxDepth(),1e-12,"Lake maximum depth");
-            check(lake.spillCell()>=0&&lake.flux()==root.flux(lake.spillCell()),"Lake spill flux mismatch");
+            long outflow=0;
+            for(int cell=0;cell<root.size();cell++)if(network.lakeForCell(cell)==lake)
+                for(int edge=0;edge<root.receiverCount(cell);edge++)if(network.lakeForCell(root.receiver(cell,edge))!=lake)
+                    outflow=Math.addExact(outflow,root.edgeFlux(cell,edge));
+            check(lake.spillCell()>=0&&lake.flux()==outflow,"Lake total branch outflow mismatch");
             check(lake.outletCell()<0||network.lakeForCell(lake.outletCell())==null||network.lakeForCell(lake.outletCell()).component()!=lake.component(),"Lake outlet remains inside its component");
         }
         var queue=new ArrayDeque<Integer>();
@@ -140,20 +145,44 @@ final class FluvialNetworkGates {
         return components;
     }
 
+    private static int lakeOutlets(ContinentalHydrology.Root root) {
+        var network=root.fluvial();int outlets=0;
+        for(var lake:network.lakes()) {
+            int p=lake.spillCell(),q=lake.outletCell();
+            boolean expected=q>=0&&!root.sea(p)&&root.primaryFlux(p)>=FluvialNetwork.minimumChannelFlux(root.step);
+            check((network.profile(p)!=null)==expected,"Lake spill reach profile does not match its discharge threshold");
+            if(!expected)continue;
+            check(network.lakeForCell(p)!=null&&network.lakeForCell(p).id()==lake.id(),"Outlet does not start in its source lake");
+            check(network.lakeForCell(q)==null||network.lakeForCell(q).id()!=lake.id(),"Outlet does not leave its source lake");
+            var start=network.centerline(p,0);var end=network.centerline(p,1);
+            close(start.x(),root.x(p),0,"Lake outlet source x");close(start.z(),root.z(p),0,"Lake outlet source z");
+            close(end.x(),root.x(q),0,"Lake outlet receiver x");close(end.z(),root.z(q),0,"Lake outlet receiver z");
+            outlets++;
+        }
+        check(outlets>0,"Natural fixture has no discharge-sized lake outlet");
+        return outlets;
+    }
+
     private static int lakeBackwater(ContinentalHydrology.Root root) {
         var network=root.fluvial();int inlets=0;
         for(int p=0;p<root.size();p++) {
+            if(network.lakeForCell(p)!=null)continue;
             var lake=network.receivingLake(p);if(lake==null||network.profile(p)==null)continue;
             check(network.lakeForCell(p)==null,"Profile begins inside a retained lake");
             int q=root.downstream(p);check(q>=0&&network.lakeForCell(q)!=null,"Receiving-lake reach has no lake endpoint");
             var mouth=root.channelAt(root.x(q),root.z(q));
-            check(mouth!=null&&network.receivingLake(mouth.sourceSegment())!=null,"Lake inlet vanished at its endpoint");
-            var selected=network.receivingLake(mouth.sourceSegment());
+            check(mouth!=null,"Lake inlet vanished at its endpoint");
+            var selected=network.lakeForCell(mouth.downstream());
+            if(selected==null)selected=network.lakeForCell(mouth.sourceSegment());
+            check(selected!=null,"Lake junction query selected an unrelated reach");
             close(mouth.waterSurface(),selected.surface(),1e-12,"River mouth is below downstream lake stage");
             check(mouth.waterSurface()>=mouth.bedElevation(),"Lake backwater did not cover the inlet bed");inlets++;
         }
         check(inlets>0,"Natural fixture has no profiled lake inlet");
-        for(int p=0;p<root.size();p++)if(network.lakeForCell(p)!=null)check(network.profile(p)==null,"Flat lake cell received a fake-slope Manning profile");
+        for(int p=0;p<root.size();p++)if(network.lakeForCell(p)!=null) {
+            var lake=network.lakeForCell(p);
+            check(network.profile(p)==null||network.lakeForCell(root.downstream(p))!=lake,"Internal lake cell received a fake-slope Manning profile");
+        }
         return inlets;
     }
 
@@ -187,8 +216,8 @@ final class FluvialNetworkGates {
         check(channels>0&&selected>=0&&bestCurve>1e-6,"No curved committed channels");
         check(cascade>0&&straight>0&&meandering>0,"Natural fixture does not exercise cascade, straight, and meandering reaches");
         check(continuous>0,"No connected profiled reaches exercise confluence interpolation");
-        check(network.maximumSegmentsPerQuery()==25,"Channel query neighborhood is not fixed 5x5");
-        check(network.maximumCurveChordsPerQuery()==25*FluvialNetwork.CURVE_SUBDIVISIONS*3,"Channel query work bound changed");
+        check(network.maximumSegmentsPerQuery()==25*8,"Channel query must cover eight flow edges in each of 5x5 cells");
+        check(network.maximumCurveChordsPerQuery()==25*8*FluvialNetwork.CURVE_SUBDIVISIONS*3,"Channel query work bound changed");
         check(network.channelAt(root.bounds.x()-root.step*2L,root.bounds.z()-root.step*2L)==null,"Out-of-support query found a channel");
 
         double t=.5;var middle=network.centerline(selected,t);long x=Math.round(middle.x()),z=Math.round(middle.z());

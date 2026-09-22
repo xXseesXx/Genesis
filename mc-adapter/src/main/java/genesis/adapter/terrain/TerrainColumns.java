@@ -1,9 +1,12 @@
 package genesis.adapter.terrain;
 
+import genesis.oracle.AdaptiveHydrology;
 import genesis.oracle.ClimateField;
 import genesis.oracle.ContinentalHydrology;
 import genesis.oracle.ContinentalHydrology.Root;
+import genesis.oracle.DendriticErosion;
 import genesis.oracle.FluvialNetwork;
+import genesis.oracle.HydrologyTuning;
 import genesis.oracle.MassWasting;
 import genesis.oracle.TectonicTerrain;
 import genesis.oracle.TerrainSubstrate;
@@ -11,13 +14,26 @@ import genesis.oracle.TerrainSubstrate;
 /** Minecraft-independent realization of the canonical eroded terrain and fluvial network. */
 public final class TerrainColumns {
 
-    public static final String VERSION = "genesis-columns-v5";
+    public static final String VERSION = "genesis-columns-v10";
     public static final int RAINFALL = 1000;
     public static final int EROSION = 700;
     public static final int HEIGHT = 256;
     static final double MINIMUM_WET_RADIUS = .75;
+    static final double WATERFALL_LIP = .58;
+    static final double WATERFALL_MIN_DROP = 3.0;
+    static final double WATERFALL_MIN_HARDNESS = .72;
+    static final double WATERFALL_MAX_SOIL = 1.35;
     public final TectonicTerrain terrain;
     public final ContinentalHydrology hydrology;
+    public final AdaptiveHydrology refinement;
+    public final HydrologyTuning tuning;
+    public final Style style;
+    private final DendriticErosion dendritic;
+
+    public enum Style {
+        CLASSIC,
+        DENDRITIC
+    }
 
     public enum Water {
         NONE,
@@ -148,14 +164,27 @@ public final class TerrainColumns {
     }
 
     public TerrainColumns(long seed) {
-        this(seed, RAINFALL, EROSION, 12);
+        this(seed, RAINFALL, EROSION, 12, Style.CLASSIC);
+    }
+
+    public TerrainColumns(long seed, Style style) {
+        this(seed, RAINFALL, EROSION, 12, style);
     }
 
     public TerrainColumns(long seed, int rainfall, int erosion, int cacheCapacity) {
-        terrain = new TectonicTerrain(seed, TectonicTerrain.defaultPlateParams(), TectonicTerrain.Settings.defaults());
-        var climate = new ClimateField(seed, terrain.plateParams.integer("plateSpacing"), rainfall);
-        var substrate = TerrainSubstrate.seeded(terrain);
-        hydrology = new ContinentalHydrology(terrain, climate, cacheCapacity, erosion, substrate);
+        this(seed, rainfall, erosion, cacheCapacity, Style.CLASSIC);
+    }
+
+    public TerrainColumns(long seed, int rainfall, int erosion, int cacheCapacity, Style style) {
+        if (style == null) throw new IllegalArgumentException("Terrain style required");
+        this.style = style;
+        tuning = HydrologyTuning.defaults();
+        terrain = new TectonicTerrain(seed, TectonicTerrain.defaultPlateParams(), dramaticSettings());
+        var climate = new ClimateField(seed, terrain.plateParams.integer("plateSpacing"), rainfall, tuning);
+        var substrate = TerrainSubstrate.seeded(terrain, tuning);
+        hydrology = new ContinentalHydrology(terrain, climate, cacheCapacity, erosion, substrate, tuning);
+        refinement = new AdaptiveHydrology(terrain);
+        dendritic = style == Style.DENDRITIC ? new DendriticErosion(terrain, tuning) : null;
     }
 
     public Column sample(long x, long z) {
@@ -184,7 +213,10 @@ public final class TerrainColumns {
         if (root == null) throw new IllegalArgumentException("Canonical hydrology root required");
         var raw = terrain.sample(x, z);
         int p = root.index(x, z);
+        var refined = refinement.sample(root, x, z);
         double eroded = root.elevation(x, z, raw.elevation(), terrain.seaLevel());
+        if (dendritic != null) eroded = dendritic.sample(root, x, z, eroded)
+            .height();
         int erodedY = height(eroded), ground = erodedY, water = -1;
         Water kind = Water.NONE;
         boolean channelBed = false;
@@ -209,21 +241,26 @@ public final class TerrainColumns {
 
         // Sea membership comes from the connected maritime solve, not elevation alone.
         // At the integer sea datum, replace the top solid voxel with a water voxel.
-        if (root.seaAt(x, z) && !raw.land()) {
+        if (!raw.land() && refinement.seaAt(root, x, z)) {
             water = terrain.seaLevel();
             ground = Math.min(ground, Math.max(1, water - 1));
             kind = Water.OCEAN;
         } else {
             // Compose the analytic channel cut before asking whether the final open volume belongs to a lake.
             // This lets a lake back-fill an inlet thalweg without lowering a sub-voxel shoreline just to show water.
-            var channel = root.channelAt(x, z);
+            var channel = refined.channel();
+            var existingLake = refinement.lakeAt(root, x, z, eroded);
+            boolean insideLakeSurface = existingLake != null && existingLake.wet()
+                && (existingLake.lake()
+                    .flux() > 0 || root.flux(p) > 0);
             boolean realizedChannel = false;
             if (channel != null) {
                 var profile = channel.profile();
                 double hardness = root.hardness(p);
                 double outerRadius = bankOuterRadius(profile, hardness);
                 if (channel.centerDistance() <= outerRadius) {
-                    var section = realizeChannelSection(ground, channel, hardness);
+                    var section = waterfallSection(ground, root, channel, rock, soilDepth);
+                    if (section == null) section = realizeChannelSection(ground, channel, hardness);
                     ground = section.groundY();
                     water = section.waterY();
                     kind = section.water();
@@ -249,17 +286,20 @@ public final class TerrainColumns {
                 }
             }
             double composedBed = realizedChannel ? Math.min(eroded, ground) : eroded;
-            var lake = root.lakeAt(x, z, composedBed);
+            var lake = insideLakeSurface ? existingLake : refinement.lakeAt(root, x, z, composedBed);
             if (lake != null && lake.wet()
-                && lake.lake()
-                    .flux() > 0) {
+                && (lake.lake()
+                    .flux() > 0 || root.flux(p) > 0)) {
                 int level = height(lake.surface());
                 if (hasOpenWaterVoxel(ground, lake.surface())) {
                     water = level;
                     kind = Water.LAKE;
+                    channelBed = false;
                     if (!realizedChannel) {
-                        flux = lake.lake()
-                            .flux();
+                        flux = Math.max(
+                            lake.lake()
+                                .flux(),
+                            root.flux(p));
                         meanDischarge = FluvialNetwork.meanDischarge(flux);
                         bankfullDischarge = meanDischarge * FluvialNetwork.BANKFULL_MULTIPLIER;
                     }
@@ -374,6 +414,52 @@ public final class TerrainColumns {
         if (verticalDepth == 0) return 0;
         double angle = MassWasting.stableAngleDegrees(hardness);
         return verticalDepth / StrictMath.tan(StrictMath.toRadians(angle));
+    }
+
+    /** Minecraft adapter preset with stronger mountain contrast and sharper plate-boundary ridges. */
+    static TectonicTerrain.Settings dramaticSettings() {
+        var value = TectonicTerrain.Settings.defaults();
+        return new TectonicTerrain.Settings(
+            value.coastBlendPermille(),
+            value.seaThreshold(),
+            64,
+            value.oceanDepth(),
+            1450,
+            10,
+            value.seaLevel(),
+            value.plateWarpPermille(),
+            170,
+            18,
+            24,
+            value.elevationOffset(),
+            value.size());
+    }
+
+    /**
+     * Quantizes a resistant exposed-rock drop into a narrow lip. The lip keeps the upstream
+     * stage over the downstream bed, producing a real vertical water column in the chunk.
+     */
+    static ChannelSection waterfallSection(int sourceGround, Root root, FluvialNetwork.Channel channel,
+        TerrainSubstrate.Rock rock, double soilDepth) {
+        if (root == null || channel == null || rock == null || !Double.isFinite(soilDepth)) {
+            throw new IllegalArgumentException("Complete waterfall context required");
+        }
+        int source = channel.sourceSegment(), downstream = channel.downstream();
+        double sourceStage = root.filled(source) / 1000.0;
+        double downstreamStage = root.filled(downstream) / 1000.0;
+        double drop = sourceStage - downstreamStage;
+        boolean resistant = rock == TerrainSubstrate.Rock.GRANITE || rock == TerrainSubstrate.Rock.BASALT;
+        double length = StrictMath.hypot(root.x(downstream) - root.x(source), root.z(downstream) - root.z(source));
+        double lipHalfWidth = Math.max(1.25, channel.threadWidth() / 2) / Math.max(1, length);
+        if (!resistant || root.hardness(source) < WATERFALL_MIN_HARDNESS
+            || soilDepth > WATERFALL_MAX_SOIL
+            || drop < WATERFALL_MIN_DROP
+            || !insideCurrentVoxel(channel)
+            || Math.abs(channel.t() - WATERFALL_LIP) > lipHalfWidth) return null;
+        int water = height(sourceStage);
+        int downstreamBed = Math.max(1, height(downstreamStage) - 1);
+        int ground = Math.min(sourceGround, downstreamBed);
+        return water > ground + 1 ? new ChannelSection(ground, water, Water.RIVER, true) : null;
     }
 
     static double bankOuterRadius(FluvialNetwork.Profile profile, double hardness) {

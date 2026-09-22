@@ -13,6 +13,7 @@ public final class GenesisMod {
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
         new GenesisWorldType();
+        new GenesisDendriticWorldType();
         MinecraftForge.EVENT_BUS.register(new GenesisSpawn());
     }
 

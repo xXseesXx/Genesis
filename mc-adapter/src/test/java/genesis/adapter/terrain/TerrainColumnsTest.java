@@ -18,13 +18,218 @@ import java.util.concurrent.Executors;
 import org.junit.Test;
 
 import genesis.adapter.GenesisBiomeManager;
+import genesis.adapter.GenesisDendriticWorldType;
 import genesis.adapter.GenesisWorldType;
+import genesis.oracle.AdaptiveHydrology;
 import genesis.oracle.ContinentalHydrology;
 import genesis.oracle.FluvialNetwork;
+import genesis.oracle.HydraulicErosion;
+import genesis.oracle.HydrologyTuning;
 import genesis.oracle.MassWasting;
 import genesis.oracle.TerrainSubstrate;
 
 public class TerrainColumnsTest {
+
+    @Test
+    public void adapterUsesCurrentMultipleFlowGeneratorAndRealizesSecondaryBranches() {
+        var columns = new TerrainColumns(42);
+        assertEquals("genesis-columns-v10", TerrainColumns.VERSION);
+        assertEquals("continental-hydrology-v6", ContinentalHydrology.VERSION);
+        assertEquals("fluvial-network-v5", FluvialNetwork.VERSION);
+        assertEquals("continental-erosion-v3", HydraulicErosion.VERSION);
+        assertEquals(HydrologyTuning.defaults(), columns.tuning);
+        assertSame(columns.tuning, columns.hydrology.tuning);
+        assertEquals(1450, columns.terrain.settings.forcingPermille());
+        assertEquals(10, columns.terrain.settings.detailHeight());
+        assertEquals(18, columns.terrain.settings.plateRelief());
+        assertEquals(24, columns.terrain.settings.plateTilt());
+        assertEquals(170, columns.terrain.settings.plateRoughnessPermille());
+
+        var root = columns.hydrology.root(columns.terrain.continent(-1, -1));
+        int splitCells = 0, secondaryProfiles = 0, realized = 0;
+        for (int p = 0; p < root.size(); p++) {
+            if (root.receiverCount(p) > 1) splitCells++;
+            long outgoing = 0;
+            for (int edge = 0; edge < root.receiverCount(p); edge++) {
+                outgoing = Math.addExact(outgoing, root.edgeFlux(p, edge));
+                int q = root.receiver(p, edge);
+                if (q == root.downstream(p)) continue;
+                var profile = root.fluvial()
+                    .edgeProfile(p, edge);
+                if (profile == null) continue;
+                secondaryProfiles++;
+                var center = root.fluvial()
+                    .edgeCenterline(p, edge, .5);
+                var column = columns.sampleBase(Math.round(center.x()), Math.round(center.z()), root);
+                if (column.flux() == profile.flux() && column.channelBed()) realized++;
+            }
+            if (root.receiverCount(p) > 0) assertEquals(root.flux(p), outgoing);
+        }
+        assertTrue("No multiple-flow cells reached the adapter", splitCells > 0);
+        assertTrue("No secondary branch profiles reached the adapter", secondaryProfiles > 0);
+        assertTrue("No secondary branch was realized as a Minecraft channel", realized > 0);
+    }
+
+    @Test
+    public void exposedResistantRidgesCreateRasterizedWaterfalls() {
+        var columns = new TerrainColumns(42);
+        int candidates = 0, waterfalls = 0;
+        for (int[] location : new int[][] { { -1, -1 }, { 0, 0 }, { 8, 6 } }) {
+            var root = columns.hydrology.root(columns.terrain.continent(location[0], location[1]));
+            for (int p = 0; p < root.size(); p++) for (int edge = 0; edge < root.receiverCount(p); edge++) {
+                var profile = root.fluvial()
+                    .edgeProfile(p, edge);
+                if (profile == null) continue;
+                int q = root.receiver(p, edge);
+                if ((root.filled(p) - root.filled(q)) / 1000.0 < TerrainColumns.WATERFALL_MIN_DROP) continue;
+                candidates++;
+                for (double t = .52; t <= .64; t += .01) {
+                    var point = root.fluvial()
+                        .edgeCenterline(p, edge, t);
+                    var column = columns.sampleBase(Math.round(point.x()), Math.round(point.z()), root);
+                    if (column.water() != TerrainColumns.Water.RIVER || column.waterY() - column.groundY() < 2) {
+                        continue;
+                    }
+                    byte[] blocks = new byte[16 * 16 * TerrainColumns.HEIGHT];
+                    ChunkRaster.fillColumn(blocks, 0, 0, column);
+                    for (int y = column.groundY() + 1; y <= column.waterY(); y++) {
+                        assertEquals(ChunkRaster.WATER, blocks[ChunkRaster.index(0, y, 0)]);
+                    }
+                    waterfalls++;
+                    break;
+                }
+            }
+        }
+        assertTrue("No steep profiled river reaches exercised the waterfall search", candidates > 0);
+        assertTrue("No resistant exposed-rock river ridge became a waterfall", waterfalls > 0);
+    }
+
+    @Test
+    public void adaptiveHydrologyRefinesOnlyCommittedWaterAndConservesParentSource() {
+        var columns = new TerrainColumns(42);
+        var root = columns.hydrology.root(columns.terrain.continent(-1, -1));
+        int channelParent = -1;
+        int dryParent = -1;
+        for (int p = 0; p < root.size(); p++) {
+            if (!root.active(p) || root.sea(p)) continue;
+            if (channelParent < 0 && root.profile(p) != null) channelParent = p;
+            if (dryParent < 0 && root.profile(p) == null
+                && root.fluvial()
+                    .lakeForCell(p) == null)
+                dryParent = p;
+        }
+        assertTrue(channelParent >= 0);
+        assertTrue(dryParent >= 0);
+
+        var channel = columns.refinement.sample(root, root.x(channelParent), root.z(channelParent));
+        var dry = columns.refinement.sample(root, root.x(dryParent), root.z(dryParent));
+        assertEquals(AdaptiveHydrology.Level.FINE, channel.level());
+        assertEquals(2, channel.step());
+        assertEquals(channelParent, channel.parent());
+        assertEquals(root.downstream(channelParent), channel.downstream());
+        assertEquals(root.flux(channelParent), channel.parentFlux());
+        assertEquals(AdaptiveHydrology.Level.COARSE, dry.level());
+        assertEquals(root.step, dry.step());
+
+        long allocated = 0;
+        long x0 = root.x(channelParent) - root.step / 2L;
+        long z0 = root.z(channelParent) - root.step / 2L;
+        for (long z = z0; z < z0 + root.step; z += 2) for (long x = x0; x < x0 + root.step; x += 2) {
+            allocated += AdaptiveHydrology.apportionedSource(root, channelParent, x, z, 2);
+        }
+        assertEquals(root.source(channelParent), allocated);
+        // TerrainColumns consults this same immutable refinement before realizing water.
+        assertNotNull(columns.sample(root.x(channelParent), root.z(channelParent)));
+    }
+
+    @Test
+    public void forcedTwoBlockWaterMasksFollowTerrainAndRetainLakeSeeds() {
+        var columns = new TerrainColumns(42);
+        var root = columns.hydrology.root(columns.terrain.continent(-1, -1));
+        int coastDifferences = 0;
+        boolean foundBoundary = false;
+        int width = root.bounds.width();
+        for (int p = 0; p < root.size() && coastDifferences == 0; p++) {
+            if (!root.sea(p)) continue;
+            int px = p % width, pz = p / width;
+            for (int[] direction : new int[][] { { 1, 0 }, { 0, 1 } }) {
+                int nx = px + direction[0], nz = pz + direction[1];
+                if (nx >= width || nz >= root.bounds.height()) continue;
+                int q = nz * width + nx;
+                if (!root.active(q) || root.sea(q)) continue;
+                foundBoundary = true;
+                long minX = Math.min(root.x(p), root.x(q));
+                long minZ = Math.min(root.z(p), root.z(q));
+                for (long z = minZ; z <= minZ + root.step; z += 2) for (long x = minX; x <= minX + root.step; x += 2) {
+                    boolean fine = columns.refinement.seaAt(root, x, z);
+                    if (fine) assertTrue(
+                        columns.terrain.sample(x, z)
+                            .elevation() <= columns.terrain.seaLevel());
+                    if (fine != root.seaAt(x, z)) coastDifferences++;
+                }
+                if (coastDifferences > 0) break;
+            }
+        }
+        assertTrue("No sampled maritime boundary found", foundBoundary);
+        assertTrue("Two-block coast mask did not differ from coarse interpolation", coastDifferences > 0);
+
+        FluvialNetwork.Lake chosen = null;
+        for (var lake : root.fluvial()
+            .lakes()) if (lake.flux() > 0) {
+                chosen = lake;
+                break;
+            }
+        assertNotNull(chosen);
+        int retainedSeeds = 0;
+        for (int p = 0; p < root.size(); p++) {
+            var lake = root.fluvial()
+                .lakeForCell(p);
+            if (lake == null || lake.id() != chosen.id()) continue;
+            double bed = root.bed(p) / 1000.0;
+            assertNotNull(columns.refinement.lakeAt(root, root.x(p), root.z(p), bed));
+            retainedSeeds++;
+        }
+        assertTrue(retainedSeeds > 0);
+    }
+
+    @Test
+    public void dendriticForkIsDeterministicDistinctAndKeepsCanonicalHydrology() {
+        var classic = new TerrainColumns(42, TerrainColumns.Style.CLASSIC);
+        var dendritic = new TerrainColumns(42, TerrainColumns.Style.DENDRITIC);
+        var cold = new TerrainColumns(42, TerrainColumns.Style.DENDRITIC);
+        var classicRoot = classic.hydrology.root(classic.terrain.continent(-1, -1));
+        var dendriticRoot = dendritic.hydrology.root(dendritic.terrain.continent(-1, -1));
+        var coldRoot = cold.hydrology.root(cold.terrain.continent(-1, -1));
+        int changed = 0;
+        int compared = 0;
+        long changedX = 0, changedZ = 0;
+        for (int p = 0; p < dendriticRoot.size() && compared < 256; p += 17) {
+            if (!dendriticRoot.active(p) || dendriticRoot.sea(p)) continue;
+            long x = dendriticRoot.x(p), z = dendriticRoot.z(p);
+            var base = classic.sampleBase(x, z, classicRoot);
+            var shaped = dendritic.sampleBase(x, z, dendriticRoot);
+            assertEquals(shaped, cold.sampleBase(x, z, coldRoot));
+            assertEquals(base.flux(), shaped.flux());
+            assertEquals(base.streamOrder(), shaped.streamOrder());
+            assertEquals(base.water(), shaped.water());
+            if (base.erodedY() != shaped.erodedY()) {
+                changed++;
+                changedX = x;
+                changedZ = z;
+            }
+            compared++;
+        }
+        assertEquals(TerrainColumns.Style.CLASSIC, classic.style);
+        assertEquals(TerrainColumns.Style.DENDRITIC, dendritic.style);
+        assertTrue("Dendritic fork did not alter any sampled surface columns", changed > 0);
+        int chunkX = Math.toIntExact(Math.floorDiv(changedX, 16));
+        int chunkZ = Math.toIntExact(Math.floorDiv(changedZ, 16));
+        var warmRaster = ChunkRaster.generate(dendritic, chunkX, chunkZ);
+        var coldRaster = ChunkRaster.generate(cold, chunkX, chunkZ);
+        assertArrayEquals(warmRaster.blocks(), coldRaster.blocks());
+        assertArrayEquals(warmRaster.metadata(), coldRaster.metadata());
+        assertArrayEquals(warmRaster.columns(), coldRaster.columns());
+    }
 
     @Test
     public void chunkRasterHasDistinctFullHeightColumns() {
@@ -45,6 +250,11 @@ public class TerrainColumnsTest {
     public void minecraftSpawnFuzzIsValidRandomBound() {
         assertTrue(GenesisWorldType.SPAWN_FUZZ > 0);
         new Random(42).nextInt(GenesisWorldType.SPAWN_FUZZ);
+    }
+
+    @Test
+    public void dendriticWorldTypeIdFitsMinecraftLimit() {
+        assertTrue(GenesisDendriticWorldType.NAME.length() <= 16);
     }
 
     @Test
@@ -119,8 +329,10 @@ public class TerrainColumnsTest {
             assertEquals(root.humidity(p), column.humidity(), 0);
             assertEquals(root.runoffPermille(p), column.runoffPermille());
             assertEquals(root.infiltrationPermille(p), column.infiltrationPermille());
-            assertEquals(root.soilDepth(p), column.soilDepth(), 0);
-            assertEquals(root.soilDepth(p), column.bedrockDepth(), 0);
+            if (column.water() == TerrainColumns.Water.NONE && !column.channelBed()) {
+                assertEquals(root.soilDepth(p), column.soilDepth(), 0);
+                assertEquals(root.soilDepth(p), column.bedrockDepth(), 0);
+            }
             assertEquals(root.rock(p), column.rock());
             assertEquals(root.drainage(p), column.drainage());
             assertTrue(column.bedrockY() <= column.erodedY());
@@ -368,10 +580,35 @@ public class TerrainColumnsTest {
             assertEquals(TerrainColumns.Water.LAKE, column.water());
             assertEquals((int) Math.floor(lake.surface()), column.waterY());
             assertTrue(column.groundY() < column.waterY());
-            assertTrue(column.channelBed());
+            assertFalse("Lake surface should not expose a river-bank classification", column.channelBed());
             found = true;
         }
         assertTrue("Natural profiled lake inlet fixture", found);
+    }
+
+    @Test
+    public void riverOutletStartsAtLakeSpillWithoutBanksAcrossTheLakeSurface() {
+        var columns = new TerrainColumns(42);
+        var root = columns.hydrology.root(columns.terrain.continent(-1, -1));
+        boolean found = false;
+        for (var lake : root.fluvial()
+            .lakes()) {
+            int spill = lake.spillCell();
+            if (root.profile(spill) == null) continue;
+            assertEquals(lake.outletCell(), root.downstream(spill));
+            var start = root.fluvial()
+                .centerline(spill, 0);
+            assertEquals(root.x(spill), start.x(), 0);
+            assertEquals(root.z(spill), start.z(), 0);
+            var column = columns.sampleBase(root.x(spill), root.z(spill), root);
+            // A sub-voxel spill lip can have no whole water voxel, but it must never
+            // turn into a separately bordered river column inside the lake component.
+            assertTrue(column.water() == TerrainColumns.Water.LAKE || column.water() == TerrainColumns.Water.NONE);
+            assertFalse("Outlet banks must be hidden beneath the source lake surface", column.channelBed());
+            found = true;
+            break;
+        }
+        assertTrue("Natural profiled lake outlet fixture", found);
     }
 
     @Test
@@ -388,7 +625,10 @@ public class TerrainColumnsTest {
                 var mask = root.fluvial()
                     .lakeMaskAt(x, z);
                 if (mask == null || mask.lake()
-                    .id() != lake.id() || mask.shorelineSignal() > 0 || !positiveNeighbor(root, x, z, lake.id()))
+                    .id() != lake.id()) continue;
+                var raw = columns.terrain.sample(x, z);
+                double bed = root.elevation(x, z, raw.elevation(), columns.terrain.seaLevel());
+                if (columns.refinement.lakeAt(root, x, z, bed) != null || !positiveFineNeighbor(columns, x, z))
                     continue;
                 var column = columns.sample(x, z, root);
                 if (column.water() == TerrainColumns.Water.NONE) {
@@ -652,12 +892,12 @@ public class TerrainColumnsTest {
         return null;
     }
 
-    private static boolean positiveNeighbor(ContinentalHydrology.Root root, long x, long z, long lakeId) {
+    private static boolean positiveFineNeighbor(TerrainColumns columns, long x, long z) {
         for (int[] direction : new int[][] { { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } }) {
-            var neighbor = root.fluvial()
-                .lakeMaskAt(x + direction[0], z + direction[1]);
-            if (neighbor != null && neighbor.lake()
-                .id() == lakeId && neighbor.shorelineSignal() > 0) return true;
+            long nx = x + direction[0], nz = z + direction[1];
+            var root = columns.rootAt(columns.hydrology.snap(nx), columns.hydrology.snap(nz));
+            if (columns.sampleBase(nx, nz, root)
+                .water() == TerrainColumns.Water.LAKE) return true;
         }
         return false;
     }

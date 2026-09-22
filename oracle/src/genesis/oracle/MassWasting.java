@@ -37,27 +37,32 @@ public final class MassWasting {
      */
     public static Result relax(int width,int height,int[] bed,boolean[] active,boolean[] fixed,double[] hardness,
                                int step,int floor) {
+        return relax(width,height,bed,active,fixed,hardness,step,floor,HydrologyTuning.defaults());
+    }
+
+    public static Result relax(int width,int height,int[] bed,boolean[] active,boolean[] fixed,double[] hardness,
+                               int step,int floor,HydrologyTuning tuning) {
         long size=(long)width*height;
         if(width<1||height<1||size>1048576||bed==null||active==null||fixed==null||hardness==null
-            ||bed.length!=size||active.length!=size||fixed.length!=size||hardness.length!=size||step<1)
+            ||bed.length!=size||active.length!=size||fixed.length!=size||hardness.length!=size||step<1||tuning==null)
             throw new IllegalArgumentException("Invalid mass-wasting grid");
         for(int p=0;p<bed.length;p++)if(active[p]&&(!Double.isFinite(hardness[p])||hardness[p]<0||hardness[p]>1))
             throw new IllegalArgumentException("Hardness outside 0..1");
 
         long moved=0;boolean[] changed=new boolean[bed.length];long[] outgoing=new long[bed.length],delta=new long[bed.length];
-        for(int pass=0;pass<PASSES;pass++) {
+        for(int pass=0;pass<tuning.massWastingPasses();pass++) {
             Arrays.fill(outgoing,0);Arrays.fill(delta,0);
             for(int[] edge:EDGES)for(int z=0;z<height;z++)for(int x=0;x<width;x++) {
                 int nx=x+edge[0],nz=z+edge[1];if(nx<0||nx>=width||nz>=height)continue;
                 int p=z*width+x,q=nz*width+nx,high=bed[p]>=bed[q]?p:q,low=high==p?q:p;
-                long proposal=proposal(high,low,bed,active,fixed,hardness,step,p%width!=q%width&&p/width!=q/width);
+                long proposal=proposal(high,low,bed,active,fixed,hardness,step,p%width!=q%width&&p/width!=q/width,tuning);
                 outgoing[high]=Math.addExact(outgoing[high],proposal);
             }
             boolean any=false;
             for(int[] edge:EDGES)for(int z=0;z<height;z++)for(int x=0;x<width;x++) {
                 int nx=x+edge[0],nz=z+edge[1];if(nx<0||nx>=width||nz>=height)continue;
                 int p=z*width+x,q=nz*width+nx,high=bed[p]>=bed[q]?p:q,low=high==p?q:p;
-                long proposal=proposal(high,low,bed,active,fixed,hardness,step,p%width!=q%width&&p/width!=q/width);
+                long proposal=proposal(high,low,bed,active,fixed,hardness,step,p%width!=q%width&&p/width!=q/width,tuning);
                 if(proposal==0)continue;
                 long available=Math.max(0L,(long)bed[high]-floor);
                 long transfer=outgoing[high]<=available?proposal:(long)StrictMath.floor(proposal*(available/(double)outgoing[high]));
@@ -78,10 +83,11 @@ public final class MassWasting {
     }
 
     private static long proposal(int high,int low,int[] bed,boolean[] active,boolean[] fixed,double[] hardness,
-                                 int step,boolean diagonal) {
+                                 int step,boolean diagonal,HydrologyTuning tuning) {
         if(high==low||!active[high]||!active[low]||fixed[high]||fixed[low]||bed[high]<=bed[low])return 0;
         double distance=step*(diagonal?StrictMath.sqrt(2):1);
-        long stable=(long)StrictMath.ceil(stableRise(hardness[high],distance)*1000);
+        double angle=tuning.softStableAngle()+(tuning.hardStableAngle()-tuning.softStableAngle())*StrictMath.pow(hardness[high],.75);
+        long stable=(long)StrictMath.ceil(StrictMath.tan(StrictMath.toRadians(angle))*distance*1000);
         long excess=(long)bed[high]-bed[low]-stable;
         return excess>1?excess/2:0;
     }

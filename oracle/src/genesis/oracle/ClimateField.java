@@ -13,9 +13,9 @@ import genesis.core.hash.Lattice;
 public final class ClimateField implements RainfallField {
     public static final String VERSION="terrain-climate-v1";
     public static final int ADVECTION_PASSES=24;
-    private static final double TRACE_CELLS=2;
     private final WindField wind;
     private final int rainfallScale;
+    private final HydrologyTuning tuning;
 
     public static final class Grid {
         private final short[] humidity,rainfall;
@@ -27,8 +27,13 @@ public final class ClimateField implements RainfallField {
     }
 
     public ClimateField(long seed,int windScale,int rainfallScale) {
+        this(seed,windScale,rainfallScale,HydrologyTuning.defaults());
+    }
+
+    public ClimateField(long seed,int windScale,int rainfallScale,HydrologyTuning tuning) {
         if(rainfallScale<0||rainfallScale>10_000)throw new IllegalArgumentException("Rainfall scale must be 0..10000 mm/year");
-        wind=new WindField(seed,windScale);this.rainfallScale=rainfallScale;
+        if(tuning==null)throw new IllegalArgumentException("Hydrology tuning required");
+        wind=new WindField(seed,windScale);this.rainfallScale=rainfallScale;this.tuning=tuning;
     }
 
     public WindField wind(){return wind;}
@@ -54,21 +59,23 @@ public final class ClimateField implements RainfallField {
         for(int p=0;p<n;p++) {
             int px=p%width,pz=p/width;long x=originX+px*(long)step,z=originZ+pz*(long)step;
             var sample=wind.sample(x,z);directionX[p]=(float)sample.unitX();directionZ[p]=(float)sample.unitZ();
-            humidity[p]=!active[p]||sea[p]?1:.48f;
+            humidity[p]=!active[p]||sea[p]?1:tuning.initialHumidityPermille()/1000f;
         }
+        double trace=tuning.traceCells();
         for(int p=0;p<n;p++)if(active[p]&&!sea[p]) {
-            int px=p%width,pz=p/width;double ux=px-directionX[p]*TRACE_CELLS,uz=pz-directionZ[p]*TRACE_CELLS;
+            int px=p%width,pz=p/width;double ux=px-directionX[p]*trace,uz=pz-directionZ[p]*trace;
             double upstream=height(bed,active,sea,width,height,ux,uz,seaHeight);
-            lift[p]=(float)Math.max(0,(bed[p]-upstream)/1000.0/(TRACE_CELLS*step));
+            lift[p]=(float)Math.max(0,(bed[p]-upstream)/1000.0/(trace*step));
         }
-        for(int pass=0;pass<ADVECTION_PASSES;pass++) {
+        for(int pass=0;pass<tuning.climatePasses();pass++) {
             for(int p=0;p<n;p++) {
                 if(!active[p]||sea[p]){next[p]=1;continue;}
                 int px=p%width,pz=p/width;
-                double upstream=sample(humidity,width,height,px-directionX[p]*TRACE_CELLS,pz-directionZ[p]*TRACE_CELLS,1);
-                double condensation=clamp(.018+2.7*lift[p],.018,.34);
+                double upstream=sample(humidity,width,height,px-directionX[p]*trace,pz-directionZ[p]*trace,1);
+                double base=tuning.baseCondensationPermille()/1000.0;
+                double condensation=clamp(base+tuning.orographicCondensationPermille()/1000.0*lift[p],base,.95);
                 // Small land recycling prevents an unrealistically absolute desert while retaining rain shadows.
-                double recycling=.008+.008*(1-upstream);
+                double recycling=tuning.recyclingPermille()/1000.0*(2-upstream);
                 next[p]=(float)clamp(upstream*(1-condensation)+recycling,.025,.995);
             }
             float[] swap=humidity;humidity=next;next=swap;
@@ -76,7 +83,8 @@ public final class ClimateField implements RainfallField {
         short[] storedHumidity=new short[n],rain=new short[n];
         for(int p=0;p<n;p++) {
             double q=humidity[p];int moisture=(int)Math.round(clamp(q,0,1)*1000);
-            double shape=.14+.72*q+Math.min(2.6,18*lift[p]*q);
+            double shape=tuning.rainfallBasePermille()/1000.0+tuning.rainfallHumidityPermille()/1000.0*q
+                +Math.min(2.6,tuning.rainfallLiftPermille()/1000.0*lift[p]*q);
             int amount=rainfallScale==0?0:(int)Math.round(clamp(rainfallScale*shape,0,10_000));
             storedHumidity[p]=(short)moisture;rain[p]=(short)amount;
         }

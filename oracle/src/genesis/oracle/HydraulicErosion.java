@@ -8,7 +8,7 @@ import java.util.Arrays;
  * from stream incision and routes are recomputed between fixed passes.
  */
 public final class HydraulicErosion {
-    public static final String VERSION="continental-erosion-v2";
+    public static final String VERSION="continental-erosion-v3";
     public static final int PASSES=6;
     private HydraulicErosion() {}
 
@@ -29,30 +29,44 @@ public final class HydraulicErosion {
 
     static Evolution evolve(int width,int height,int[] bed,boolean[] active,boolean[] sea,long[] source,
                             double[] hardness,double[] exposure,int step,int seaHeight,int strength) {
+        return evolve(width,height,bed,active,sea,source,hardness,exposure,step,seaHeight,strength,HydrologyTuning.defaults());
+    }
+
+    static Evolution evolve(int width,int height,int[] bed,boolean[] active,boolean[] sea,long[] source,
+                            double[] hardness,double[] exposure,int step,int seaHeight,int strength,HydrologyTuning tuning) {
         if(strength<0||strength>3000)throw new IllegalArgumentException("Erosion strength 0..3000");
+        if(tuning==null)throw new IllegalArgumentException("Hydrology tuning required");
         var flow=route(width,height,bed,active,sea,source,seaHeight);
         if(strength==0)return new Evolution(flow,new MassWasting.Result(0,0));
         int[] sequence=new int[bed.length];
-        for(int pass=0;pass<PASSES;pass++) {
+        int passes=tuning.erosionPasses();
+        for(int pass=0;pass<passes;pass++) {
             int[] previous=bed.clone();
             Arrays.fill(sequence,-1);
             for(int p=0;p<bed.length;p++)if(flow.resolved(p))sequence[flow.order(p)]=p;
             // Downstream first: every implicit receiver already has its new elevation.
             for(int p:sequence)if(p>=0&&!sea[p]&&flow.filled(p)==bed[p]) {
-                int q=flow.downstream(p);if(q<0)continue;
-                double distance=p%width!=q%width&&p/width!=q/width?StrictMath.sqrt(2):1;
-                // Use water/spill elevation in lakes, never incise toward a submerged lake bed.
-                double receiver=sea[q]?seaHeight:flow.filled(q)>previous[q]?flow.filled(q):bed[q];
-                double result=incise(bed[p],receiver,flow.flux(p)/(1000.0*step*step),hardness[p],exposure[p],strength/(1000.0*PASSES),distance);
+                // Solve the n=1 implicit update with every outgoing edge's allocated flow.
+                double coefficient=0,weightedReceiver=0;
+                for(int edge=0;edge<flow.receiverCount(p);edge++) {
+                    int q=flow.receiver(p,edge);long flux=flow.edgeFlux(p,edge);if(flux==0)continue;
+                    double distance=p%width!=q%width&&p/width!=q/width?StrictMath.sqrt(2):1;
+                    double receiver=sea[q]?seaHeight:flow.filled(q)>previous[q]?flow.filled(q):bed[q];
+                    if(receiver>=bed[p])continue;
+                    double a=strength/(1000.0*passes)*exposure[p]*(1-.95*hardness[p])
+                        *StrictMath.sqrt(flux/(1000.0*step*step))/distance;
+                    coefficient+=a;weightedReceiver+=a*receiver;
+                }
+                double result=(bed[p]+weightedReceiver)/(1+coefficient);
                 bed[p]=Math.min(bed[p],Math.max(seaHeight+1,(int)StrictMath.ceil(result)));
             }
             // The next incision pass needs fresh routing; after the last pass the
             // gravity stage changes the bed again, so defer that final reroute.
-            if(pass+1<PASSES)flow=route(width,height,bed,active,sea,source,seaHeight);
+            if(pass+1<passes)flow=route(width,height,bed,active,sea,source,seaHeight);
         }
         // Stream incision can oversteepen valley walls. A small, fixed, mass-conserving
         // relaxation leaves weak material at a lower stable angle than resistant rock.
-        var wasting=MassWasting.relax(width,height,bed,active,sea,hardness,step,seaHeight+1);
+        var wasting=tuning.massWasting()?MassWasting.relax(width,height,bed,active,sea,hardness,step,seaHeight+1,tuning):new MassWasting.Result(0,0);
         flow=route(width,height,bed,active,sea,source,seaHeight);
         return new Evolution(flow,wasting);
     }

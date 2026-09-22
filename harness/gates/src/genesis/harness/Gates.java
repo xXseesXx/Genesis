@@ -88,18 +88,22 @@ public final class Gates {
             }
             case "tectonic" -> TectonicTerrainGates.run();
             case "rivers" -> {
+                MultipleFlowGates.main(new String[0]);
                 ClimateGroundGates.run();
                 ActiveHydrologyGates.run();
                 ContinentalHydrologyGates.run();
                 HydraulicErosionGates.run();
+                DendriticErosionGates.run();
                 FluvialNetworkGates.run();
             }
             case "tectonic-viewer" -> {
+                MultipleFlowGates.main(new String[0]);
                 TectonicTerrainGates.run();
                 ClimateGroundGates.run();
                 ActiveHydrologyGates.run();
                 ContinentalHydrologyGates.run();
                 HydraulicErosionGates.run();
+                DendriticErosionGates.run();
                 FluvialNetworkGates.run();
                 TectonicViewGates.run();
                 TectonicTileGates.main(new String[0]);
@@ -148,6 +152,7 @@ public final class Gates {
         ClimateGroundGates.run();
         ContinentalHydrologyGates.run();
         HydraulicErosionGates.run();
+        DendriticErosionGates.run();
         FluvialNetworkGates.run();
         TectonicViewGates.run();
         TectonicTileGates.main(new String[0]);

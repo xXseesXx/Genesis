@@ -41,7 +41,13 @@ final class ContinentalHydrologyGates {
                     check(Math.abs(root.x(p)-root.x(q))<=hydro.step&&Math.abs(root.z(p)-root.z(q))<=hydro.step,"River teleports");
                 }
                 check(root.flux(p)>=root.source(p),"Flux lost local rain");
-                int visit=p,guard=0;while(visit>=0){walked[visit]=Math.addExact(walked[visit],root.source(p));visit=root.downstream(visit);check(++guard<=root.activeCells,"Drainage cycle");}
+                walked[p]=Math.addExact(walked[p],root.source(p));long outgoing=0;
+                for(int edge=0;edge<root.receiverCount(p);edge++) {
+                    int receiver=root.receiver(p,edge);long amount=root.edgeFlux(p,edge);
+                    check(root.order(receiver)<root.order(p)&&root.filled(receiver)<=root.filled(p),"Cyclic or uphill branch");
+                    walked[receiver]=Math.addExact(walked[receiver],amount);outgoing=Math.addExact(outgoing,amount);
+                }
+                if(root.receiverCount(p)>0)check(outgoing==root.flux(p),"Branch shares lose water");
                 bytes.clear();bytes.putLong(root.x(p)).putLong(root.z(p)).putInt(root.bed(p)).putInt(root.filled(p)).putInt(root.downstream(p)).putLong(root.source(p)).putLong(root.flux(p));digest.update(bytes.array(),0,bytes.position());
             }
             for(int p=0;p<root.size();p++)if(root.active(p))check(walked[p]==root.flux(p),"Complete upstream source walks disagree with flux");
@@ -52,7 +58,7 @@ final class ContinentalHydrologyGates {
         }
         check(lakes>0,"No continental depressions fill to spill");
         counterfactuals(world);spillFixtures();
-        String fingerprint=HexFormat.of().formatHex(digest.digest());check(fingerprint.equals("0124b6d1df53b2cb17f3f6ad68d5bf209e47413b435f21a64dc7cc91aebb47ab"),"Versioned continental hydrology changed: "+fingerprint);
+        String fingerprint=HexFormat.of().formatHex(digest.digest());check(fingerprint.equals("6d1ad9209233fb3b541db0d2b6b86c69cee0cf372ba16389983f25aeb9b71bee"),"Versioned continental hydrology changed: "+fingerprint);
         Files.createDirectories(Path.of("build/gallery"));Files.writeString(Path.of("build/continental-hydrology.json"),json.append("],\"fingerprint\":\"").append(fingerprint).append("\"}\n").toString());
         System.out.println("PASS CONTINENT HYDRO: complete support vs wider reference, rainfall scaling/heterogeneity/dryness, downhill overflow and independent upstream walks, cache/concurrency, spill cascade and exact ledgers");
     }
@@ -61,7 +67,8 @@ final class ContinentalHydrologyGates {
         for(int p=0;p<a.size();p++)if(a.active(p)) {
             int q=b.index(a.x(p),a.z(p));check(b.active(q)&&a.bed(p)==b.bed(q)&&a.filled(p)==b.filled(q),"Support/rain changed bed or spill");
             int ap=a.downstream(p),bp=b.downstream(q);check((ap<0&&bp<0)||(ap>=0&&bp>=0&&a.x(ap)==b.x(bp)&&a.z(ap)==b.z(bp)),"Drainage topology depends on box/rain/cache");
-            check(b.source(q)==a.source(p)*rainScale&&b.flux(q)==a.flux(p)*rainScale,"Rainfall mass does not scale exactly");
+            long tolerance=rainScale<=1?0:8L*a.activeCells*rainScale;
+            check(b.source(q)==a.source(p)*rainScale&&Math.abs(b.flux(q)-a.flux(p)*rainScale)<=tolerance,"Rainfall scaling exceeds accumulated integer apportionment error");
         }
     }
     private static void counterfactuals(TectonicTerrain world)throws Exception {
@@ -73,7 +80,7 @@ final class ContinentalHydrologyGates {
         var upWorld=new TectonicTerrain(world.seed,world.basePlateParams,upSettings);var up=new ContinentalHydrology(upWorld,new RainfallField.Uniform(1000)).root(upWorld.continent(-1,-1));
         check(up.activeCells==base.activeCells&&up.terminalCells==base.terminalCells&&up.supplied()==base.supplied()*4&&up.discharged()==base.discharged()*4,"Native upscale changed drainage support or area budget");
         for(int p=0;p<base.size();p++)if(base.active(p)) {
-            int q=up.index(base.x(p)*2,base.z(p)*2);check(up.active(q)&&up.bed(q)==base.bed(p)*2&&up.filled(q)==base.filled(p)*2&&up.source(q)==base.source(p)*4&&up.flux(q)==base.flux(p)*4,"Native upscale changed river geometry or mass");
+            int q=up.index(base.x(p)*2,base.z(p)*2);check(up.active(q)&&up.bed(q)==base.bed(p)*2&&up.filled(q)==base.filled(p)*2&&up.source(q)==base.source(p)*4&&Math.abs(up.flux(q)-base.flux(p)*4)<=32L*base.activeCells,"Native upscale changed river geometry or exceeded integer rounding bound");
             int a=base.downstream(p),b=up.downstream(q);check((a<0&&b<0)||(a>=0&&b>=0&&up.x(b)==base.x(a)*2&&up.z(b)==base.z(a)*2),"Native upscale changed receiver topology");
         }
         long split=base.bounds.x()+base.bounds.width()/2L*base.step;

@@ -39,9 +39,13 @@ final class HydraulicErosionGates {
         check(root.exportedSediment.equals(java.math.BigInteger.valueOf(removed).multiply(java.math.BigInteger.valueOf((long)root.step*root.step))),"Bedrock volume ledger mismatch");
         check(root.redistributedSediment.signum()>=0,"Invalid gravity-transport ledger");
         check(root.supplied()==root.discharged()&&root.unresolved()==0,"Final runoff lost water");
-        // Independent source walks on the FINAL (changed) drainage, not pre-erosion routes.
+        // Independent incoming-edge ledger on the FINAL apportioned drainage.
         long[] walks=new long[root.size()];
-        for(int p=0;p<root.size();p++)if(root.source(p)>0){int q=p,guard=0;while(q>=0){walks[q]=Math.addExact(walks[q],root.source(p));q=root.downstream(q);check(++guard<=root.activeCells,"Cycle");}}
+        for(int p=0;p<root.size();p++)walks[p]=root.source(p);
+        for(int p=0;p<root.size();p++)for(int edge=0;edge<root.receiverCount(p);edge++) {
+            int q=root.receiver(p,edge);check(root.order(q)<root.order(p),"Cycle");
+            walks[q]=Math.addExact(walks[q],root.edgeFlux(p,edge));
+        }
         for(int p=0;p<root.size();p++)if(root.active(p))check(walks[p]==root.flux(p),"Eroded source walks disagree");
         compare(root,hydro.referenceRoot(group,3));
         hydro.root(world.continent(8,6));compare(root,hydro.root(group));hydro.clear();
